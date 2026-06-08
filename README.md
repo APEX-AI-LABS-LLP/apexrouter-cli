@@ -11,6 +11,7 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-3b3b3b?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/built_with-Rust-dea584?style=for-the-badge&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![platforms](https://img.shields.io/badge/macOS_·_Linux_·_Windows-2b2b2b?style=for-the-badge)](#install)
+[![status](https://img.shields.io/badge/status-public_beta-e85d2a?style=for-the-badge)](#built-to-endure)
 
 [Install](#install) · [Quick start](#quick-start) · [Providers](#providers--model-routing) · [Orchestration](#orchestration--swarms) · [Security](#security-by-default) · [Endurance](#built-to-endure) · [Embedding](#embedding-it) · [Docs](#documentation)
 
