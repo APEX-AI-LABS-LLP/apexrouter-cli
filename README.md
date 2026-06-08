@@ -31,9 +31,7 @@ Wayland Core connects to any major LLM provider, autonomously invokes local tool
 
 <div align="center">
 
-| Interactive TUI | Agent at work |
-|:---:|:---:|
-| ![Wayland Core workspace](docs/img/tui-workspace.png) | ![Wayland Core running a task](docs/img/tui-session.png) |
+![Wayland Core — interactive TUI](docs/img/tui-workspace.png)
 
 </div>
 
@@ -101,12 +99,12 @@ Point it at Anthropic, OpenAI (or any OpenAI-compatible endpoint — DeepSeek, Q
 
 | Provider | Auth | Notes |
 |----------|------|-------|
-| **Anthropic** | API key / OAuth (Claude.ai) | Prompt caching, streaming, vision |
+| **Anthropic** | API key | Prompt caching, streaming, vision |
 | **OpenAI** | API key | Reasoning models (`o1`/`o3`); compatible with DeepSeek, Qwen, Ollama, Gemini, vLLM |
 | **AWS Bedrock** | SigV4 | Regional endpoints, AWS credential chain, schema sanitization |
 | **Google Vertex AI** | GCP OAuth2 / service account | Metadata-server auto-detection |
 
-Named **profiles** with `extends` let you switch provider/model in one flag. OAuth means you can use a Claude.ai subscription directly — no API key required. [→ docs/providers.md](docs/providers.md)
+Named **profiles** with `extends` let you switch provider/model in one flag. [→ docs/providers.md](docs/providers.md)
 
 ## ProviderCompat — the no-hardcoded-quirks rule
 

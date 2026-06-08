@@ -1,8 +1,7 @@
 //! Config surface (surface 07) — the 3-tier progressive-disclosure
 //! settings screen.
 //!
-//! This surface implements the design in `docs/cli-tui-redesign/
-//! ux-krug-sutherland.md` §Task 2: a single full-screen settings view
+//! This surface presents a single full-screen settings view
 //! where every setting is framed by its *consequence*, never the TOML key
 //! behind it. The depth is folded into three tiers:
 //!
