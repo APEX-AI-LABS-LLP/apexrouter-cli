@@ -522,6 +522,12 @@ pub struct AgentEngine {
     /// via `McpConfig::default()` so most callers get curated tool lists for
     /// free without flipping a flag.
     mcp_curation: wcore_config::config::McpCurationPolicy,
+    /// Cache-stability (token-opt): inventory-hashed UNION of curated MCP
+    /// keep-sets. Keeps the serialized tool-zone prefix byte-stable across
+    /// turns — a per-turn re-curation otherwise rewrites the cached prefix at
+    /// the cache-WRITE rate every MCP turn. Reset only when the MCP tool
+    /// inventory itself changes (server connect/disconnect / plugin reload).
+    mcp_curation_cache: Option<(u64, std::collections::HashSet<String>)>,
     /// W6 F17 — audit-log handle for the recency input to `McpCurator`.
     /// `None` means the agent runs without M2 memory wiring (test envs);
     /// curation gracefully degrades to keyword-only ranking in that case.
@@ -900,6 +906,7 @@ impl AgentEngine {
             advertised_capabilities: config.advertised_capabilities.clone(),
             per_turn_costs: Vec::new(),
             mcp_curation: config.mcp.curation.clone(),
+            mcp_curation_cache: None,
             audit_log: None,
             // W7 Pre-flight 0: default to NullMemory; `AgentBootstrap`
             // calls `set_memory_api()` after construction when a real
@@ -1053,6 +1060,7 @@ impl AgentEngine {
             advertised_capabilities: config.advertised_capabilities.clone(),
             per_turn_costs: Vec::new(),
             mcp_curation: config.mcp.curation.clone(),
+            mcp_curation_cache: None,
             audit_log: None,
             // W7 Pre-flight 0: default to NullMemory; `AgentBootstrap`
             // calls `set_memory_api()` after construction when a real
@@ -2764,7 +2772,7 @@ impl AgentEngine {
             let tools = self.apply_mcp_curation(tools);
 
             // Build system prompt: append plan mode instructions when active
-            let mut system = if self.plan_state.is_active {
+            let system = if self.plan_state.is_active {
                 format!(
                     "{}\n\n{}",
                     self.system_prompt,
@@ -2774,17 +2782,14 @@ impl AgentEngine {
                 self.system_prompt.clone()
             };
 
-            // v0.8.1 U1 — append the per-turn skill-router hint when the
-            // router is installed and picked a visible catalog skill. This
-            // is the only place the learned pick reaches the model; it's a
-            // single non-binding line, mirroring how plan-mode instructions
-            // are appended above. `None` (no router / no pick / unknown or
-            // hidden skill) leaves `system` untouched, so engines without a
-            // router are byte-identical to pre-U1.
-            if let Some(hint) = self.skill_router_hint() {
-                system.push_str("\n\n");
-                system.push_str(&hint);
-            }
+            // v0.8.1 U1 — the per-turn skill-router hint (when the router is
+            // installed and picked a visible catalog skill). Cache-stability
+            // (token-opt): the hint is dynamic per turn, so appending it to the
+            // `system` string here would rewrite the cached system prefix
+            // (zone 1) every turn. Compute it now and inject it into the
+            // request's volatile message tail below instead. `None` (no router
+            // / no pick / hidden skill) leaves both system and tail untouched.
+            let skill_hint = self.skill_router_hint();
 
             // Record prompt state for cache diagnostics
             self.cache_detector.record_request(&system, &tools);
@@ -2855,6 +2860,21 @@ impl AgentEngine {
                 cache_tier,
                 routing_hint: None,
             };
+
+            // Cache-stability (token-opt): inject the per-turn skill-router
+            // hint as a transient text block on the request's last user-role
+            // message. `request.messages` is a clone, so this never persists
+            // into history and never shifts the cached system/tool prefix.
+            // Done before `mark_cache_boundaries` so the tail breakpoint
+            // accounts for the final content. Skipped unless the tail is
+            // user-role (never orphans a tool_use or creates adjacent user
+            // messages).
+            if let Some(hint) = skill_hint
+                && let Some(last) = request.messages.last_mut()
+                && matches!(last.role, Role::User)
+            {
+                last.content.push(ContentBlock::Text { text: hint });
+            }
 
             // W1 S3: place per-message cache breakpoint at the tail when the
             // provider honours it. Idempotent across turns: previous turns'
@@ -4943,7 +4963,7 @@ impl AgentEngine {
     /// `wcore-mcp/src/tool_proxy.rs:14`). Curation source: the most recent
     /// user message in `self.messages`. `Off` policy is a no-op.
     fn apply_mcp_curation(
-        &self,
+        &mut self,
         tools: Vec<wcore_types::tool::ToolDef>,
     ) -> Vec<wcore_types::tool::ToolDef> {
         let top_k = match &self.mcp_curation {
@@ -4957,6 +4977,26 @@ impl AgentEngine {
             keep.extend(mcp_tools);
             return keep;
         }
+
+        // Cache-stability (token-opt): the kept MCP set must stay stable across
+        // turns, or it rewrites the cached tool-zone prefix every turn at the
+        // cache-WRITE rate (~1.25x) instead of re-reading it (~0.1x). Key a
+        // UNION of curated keep-sets on the MCP tool inventory hash: this turn's
+        // keyword/recency pick is unioned into the cached set, which grows
+        // monotonically as new user messages surface new tools and then
+        // stabilizes — byte-stable on the common turn. We never freeze turn-1's
+        // keywords (that would permanently hide a tool the model needs later);
+        // the cache resets only when the inventory itself changes (server
+        // connect/disconnect / plugin reload), a legitimate one-turn miss.
+        let inventory_hash = {
+            use std::hash::{Hash, Hasher};
+            let mut names: Vec<&str> = mcp_tools.iter().map(|t| t.name.as_str()).collect();
+            names.sort_unstable();
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            names.hash(&mut h);
+            h.finish()
+        };
+
         let user_msg = self.most_recent_user_text();
         let usage = self.recent_mcp_usage();
         let triples: Vec<(String, String, String)> = mcp_tools
@@ -4974,8 +5014,21 @@ impl AgentEngine {
                 tools: &triples,
                 recent_usage: &usage,
             });
-        let keep_names: std::collections::HashSet<String> =
+        let this_turn: std::collections::HashSet<String> =
             ranked.into_iter().map(|r| r.tool_name).collect();
+
+        // Union into the inventory-keyed cache (reset on inventory change).
+        let keep_names = match self.mcp_curation_cache.as_mut() {
+            Some((hash, set)) if *hash == inventory_hash => {
+                set.extend(this_turn);
+                set.clone()
+            }
+            _ => {
+                self.mcp_curation_cache = Some((inventory_hash, this_turn.clone()));
+                this_turn
+            }
+        };
+
         for t in mcp_tools {
             if keep_names.contains(&t.name) {
                 keep.push(t);
@@ -5255,6 +5308,7 @@ mod set_config_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -5317,6 +5371,76 @@ mod set_config_tests {
         let mut engine = make_engine(model);
         engine.compat = compat;
         engine
+    }
+
+    /// Cache-stability regression (token-opt): MCP tool curation must NOT churn
+    /// the kept set turn-to-turn, or it rewrites the cached tool-zone prefix
+    /// every turn at the cache-WRITE rate. The inventory-keyed UNION retains
+    /// earlier-surfaced tools (monotonic) and is byte-identical once stabilized.
+    #[test]
+    fn mcp_curation_union_is_cache_stable_across_turns() {
+        use wcore_types::message::{ContentBlock, Message, Role};
+
+        fn mcp_tool(name: &str, desc: &str) -> wcore_types::tool::ToolDef {
+            wcore_types::tool::ToolDef {
+                name: name.to_string(),
+                description: desc.to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+                deferred: false,
+            }
+        }
+        let tools = vec![
+            mcp_tool("mcp__srv__alpha", "search alpha database records"),
+            mcp_tool("mcp__srv__bravo", "send bravo email messages"),
+            mcp_tool("mcp__srv__charlie", "compile charlie reports"),
+            mcp_tool("mcp__srv__delta", "remove delta entries"),
+        ];
+        let names = |v: Vec<wcore_types::tool::ToolDef>| -> Vec<String> {
+            v.into_iter().map(|t| t.name).collect()
+        };
+        let user = |text: &str| {
+            vec![Message::new(
+                Role::User,
+                vec![ContentBlock::Text {
+                    text: text.to_string(),
+                }],
+            )]
+        };
+
+        let mut engine = make_engine("m");
+        engine.mcp_curation = wcore_config::config::McpCurationPolicy::TopK { k: 2 };
+        engine.audit_log = None; // keyword-only ranking → deterministic
+
+        // Turn 1: a request about "alpha database".
+        engine.messages = user("alpha database query");
+        let turn1 = names(engine.apply_mcp_curation(tools.clone()));
+        assert!(turn1.contains(&"mcp__srv__alpha".to_string()));
+
+        // Turn 2: a DIFFERENT request about "charlie reports". The old per-turn
+        // curation would DROP alpha here (cache bust); the union must keep it.
+        engine.messages = user("charlie reports compile");
+        let turn2 = names(engine.apply_mcp_curation(tools.clone()));
+        assert!(
+            turn2.contains(&"mcp__srv__alpha".to_string()),
+            "monotonic union must retain earlier-surfaced tools across turns"
+        );
+        assert!(turn2.contains(&"mcp__srv__charlie".to_string()));
+
+        // Turn 3: repeat turn 2 — the union is now stable, so the serialized
+        // tool list is byte-identical (a cache READ, not a prefix rewrite).
+        let turn3 = names(engine.apply_mcp_curation(tools.clone()));
+        assert_eq!(
+            turn2, turn3,
+            "stabilized union must be byte-identical across turns"
+        );
+
+        // A real inventory change (new MCP server tool) legitimately resets the
+        // cache so the new tool can be surfaced.
+        let mut tools2 = tools.clone();
+        tools2.push(mcp_tool("mcp__srv__echo", "echo fresh tool"));
+        engine.messages = user("echo fresh tool");
+        let after_change = names(engine.apply_mcp_curation(tools2));
+        assert!(after_change.contains(&"mcp__srv__echo".to_string()));
     }
 
     // --- Cycle 1 tests (updated signature) ---
@@ -5901,6 +6025,7 @@ mod phase6_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -6177,6 +6302,7 @@ mod compact_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -6944,6 +7070,7 @@ mod plan_mode_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -7353,6 +7480,7 @@ mod hook_integration_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -8011,6 +8139,7 @@ mod approval_bridge_engine_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
@@ -8232,6 +8361,7 @@ mod user_model_writeback_tests {
             advertised_capabilities: wcore_config::tools::AdvertisedCapabilitiesConfig::default(),
             per_turn_costs: Vec::new(),
             mcp_curation: wcore_config::config::McpCurationPolicy::default(),
+            mcp_curation_cache: None,
             audit_log: None,
             memory_api: Arc::new(wcore_memory::NullMemory),
             dream_throttle: Arc::new(wcore_memory::consolidate::DreamThrottle::new(
