@@ -43,6 +43,7 @@
 //   later enhancement.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -55,6 +56,7 @@ use crate::bootstrap::AgentBootstrap;
 use crate::channel_inbound::TurnDispatcher;
 use crate::engine::AgentEngine;
 use crate::output::OutputSink;
+use crate::session::SessionManager;
 
 /// Engine-backed dispatcher: one [`AgentEngine`] per channel session,
 /// pooled by the hashed session id, all sharing a single provider.
@@ -139,15 +141,34 @@ impl ChannelTurnDispatcher {
         let mut config = self.config.clone();
         config.tools.auto_approve = false;
 
-        let bootstrap = AgentBootstrap::new(config, self.cwd.clone(), output)
+        // Load-or-create the session for this id. `init_session` CREATES a
+        // session and hard-errors ("Session ID '…' already exists") if the id
+        // is already on disk — which happens whenever a prior process
+        // persisted this conversation (the in-memory pool only dedupes within
+        // one process). So probe the session store first: if the session
+        // exists, RESUME it (preserving history across restarts); otherwise
+        // create it fresh.
+        let session_mgr = SessionManager::new(
+            PathBuf::from(&self.config.session.directory),
+            self.config.session.max_sessions,
+        );
+        let existing = session_mgr.load(hashed_id).ok();
+        let is_new = existing.is_none();
+
+        let mut bootstrap = AgentBootstrap::new(config, self.cwd.clone(), output)
             .provider(self.provider.clone())
             // MANDATORY: stop the per-session engine from re-registering
             // channels / spawning pollers / spawning another subscriber.
             .without_channels(true);
+        if let Some(session) = existing {
+            bootstrap = bootstrap.resume(session);
+        }
         let result = bootstrap.build().await?;
         let mut engine = result.engine;
 
-        engine.init_session(&self.config.provider_label, &self.cwd, Some(hashed_id))?;
+        if is_new {
+            engine.init_session(&self.config.provider_label, &self.cwd, Some(hashed_id))?;
+        }
         engine.rebind_memory_session().await;
         engine.run_session_start_hooks().await;
         // No `set_approval_manager` / `set_protocol_writer`: see the posture

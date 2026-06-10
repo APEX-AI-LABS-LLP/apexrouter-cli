@@ -210,9 +210,22 @@ impl Channel for TelegramChannel {
 
     async fn send_message(&mut self, msg: OutgoingMessage) -> Result<MessageReceipt, ChannelError> {
         let token = self.bot_token.as_deref().ok_or(ChannelError::NotStarted)?;
+        // Under MarkdownV2 every reserved character must be backslash-escaped
+        // or Telegram rejects the send with `400 ... can't parse entities`.
+        // We escape the full text (see `escape_markdown_v2` docs for v1
+        // semantics). HTML / legacy Markdown have different escaping rules and
+        // are left untouched here. `escaped` outlives `body`'s borrow.
+        let escaped;
+        let text: &str = match self.config.parse_mode {
+            ParseMode::MarkdownV2 => {
+                escaped = config::escape_markdown_v2(&msg.text);
+                &escaped
+            }
+            ParseMode::Html | ParseMode::Markdown => &msg.text,
+        };
         let body = api::SendMessageBody {
             chat_id: &msg.conversation_id,
-            text: &msg.text,
+            text,
             parse_mode: Some(self.config.parse_mode.as_api_str()),
             reply_to_message_id: msg.reply_to.as_deref().and_then(|s| s.parse::<i64>().ok()),
         };
@@ -319,6 +332,67 @@ mod tests {
         assert_eq!(receipt.id, "42");
         assert_eq!(receipt.conversation_id, "42");
         assert_eq!(receipt.ts_secs, 1_700_000_000);
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 1b. MarkdownV2 channel escapes reserved chars in the send payload;
+    //     HTML channel sends the raw text (no MarkdownV2 escaping). This
+    //     is the HIGH-9 regression guard: a reply like `Hi! (ok).` must
+    //     reach Telegram as `Hi\! \(ok\)\.` under MarkdownV2.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn markdown_v2_escapes_payload_text() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .match_body(mockito::Matcher::PartialJsonString(
+                // JSON-encoded form of `Hi\! \(ok\)\.` — each backslash is
+                // doubled because it is itself escaped in the JSON string.
+                r#"{"text":"Hi\\! \\(ok\\)\\.","parse_mode":"MarkdownV2"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        ch.send_message(OutgoingMessage::text("1", "Hi! (ok)."))
+            .await
+            .unwrap();
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn html_mode_does_not_apply_markdown_v2_escaping() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .match_body(mockito::Matcher::PartialJsonString(
+                // Raw text, unescaped, under HTML parse mode.
+                r#"{"text":"Hi! (ok).","parse_mode":"HTML"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let html_cfg = TelegramConfig {
+            parse_mode: ParseMode::Html,
+            ..cfg()
+        };
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", html_cfg, creds, server.url());
+        ch.start().await.unwrap();
+        ch.send_message(OutgoingMessage::text("1", "Hi! (ok)."))
+            .await
+            .unwrap();
         mock.assert_async().await;
         ch.stop().await.unwrap();
     }
