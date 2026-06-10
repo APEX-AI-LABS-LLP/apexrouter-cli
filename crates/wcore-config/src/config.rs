@@ -1940,7 +1940,7 @@ fn legacy_yaml_path() -> Option<PathBuf> {
 /// Runs at bootstrap before `load_config_file` so any fields the engine
 /// cares about are present in the TOML on the first start after install.
 /// Idempotent: skips when the legacy yaml is absent or the canonical TOML
-/// already has a `[default]` model set. Never deletes the yaml.
+/// already exists. Never deletes the yaml.
 ///
 /// Both the read path (legacy yaml) and the write path (canonical TOML)
 /// route through `wayland_config_dir()` so `WAYLAND_HOME` hermetically
@@ -1956,13 +1956,18 @@ pub fn migrate_legacy_yaml_if_needed() {
 
     let canonical_path = global_config_path();
 
-    // If the canonical TOML already has [default] model set, skip.
-    // A zero-length or missing TOML still triggers migration.
-    let existing_toml = std::fs::read_to_string(&canonical_path).unwrap_or_default();
-    let existing: ConfigFile = toml::from_str(&existing_toml).unwrap_or_default();
-    if existing.default.model.is_some() {
-        return; // already migrated or manually configured
+    // Guard on the canonical TOML's EXISTENCE, not on any field within it.
+    // The migration is a one-time yaml→toml conversion: once config.toml
+    // exists it is the source of truth and must never be re-serialized
+    // (doing so destroys user comments and any field outside ConfigFile).
+    // Keying on model presence re-fired on every launch when the legacy
+    // yaml carried no model (#: destructive re-serialization).
+    if canonical_path.exists() {
+        return; // already migrated or hand-authored — never touch it again
     }
+
+    // No canonical TOML yet: start the migration from defaults.
+    let existing = ConfigFile::default();
 
     // Parse the legacy yaml. On any error, warn and skip — the migration
     // is best-effort and must never prevent the engine from starting.
@@ -2009,8 +2014,8 @@ pub fn migrate_legacy_yaml_if_needed() {
         }
     };
 
-    // Build an updated ConfigFile from the existing TOML merged with the
-    // fields the yaml provides.
+    // Build an updated ConfigFile from defaults overlaid with the fields the
+    // yaml provides. (We only reach here when no canonical TOML exists yet.)
     let mut updated = existing;
 
     if let Some(m) = legacy.model {
@@ -4275,5 +4280,116 @@ skills_lifecycle = true
 
         let file = try_load_config_file(&path).expect("valid config must load");
         assert_eq!(file.default.provider, "openai");
+    }
+
+    // -------------------------------------------------------------------------
+    // Migration re-fire (P0 dataloss): the guard keys on the canonical TOML's
+    // EXISTENCE, not on whether a `[default]` model is set. A legacy yaml with
+    // no model previously left config.toml without a model, so the migration
+    // re-serialized config.toml on EVERY launch — destroying user comments and
+    // any field outside ConfigFile. Once config.toml exists, migration must be
+    // a no-op and leave the file byte-identical.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    #[serial_test::serial(wayland_home_env)]
+    fn migrate_legacy_yaml_skips_when_canonical_toml_exists() {
+        let wh_key = "WAYLAND_HOME";
+        let xdg_key = "XDG_DATA_HOME";
+        let prev_wh = std::env::var_os(wh_key);
+        let prev_xdg = std::env::var_os(xdg_key);
+
+        let sandbox = tempfile::tempdir().expect("tempdir sandbox");
+        let sandbox_path = sandbox.path().to_path_buf();
+
+        unsafe {
+            std::env::set_var(wh_key, &sandbox_path);
+            std::env::remove_var(xdg_key);
+        }
+
+        // A legacy yaml with NO model — the case that defeated the old
+        // model-presence guard.
+        std::fs::write(
+            sandbox_path.join("config.yaml"),
+            "memory:\n  memory_enabled: true\n",
+        )
+        .expect("seed sandbox yaml");
+
+        // A pre-existing canonical TOML carrying a user comment and a field
+        // (## MARKER) that ConfigFile would drop on re-serialization.
+        let canonical_toml = sandbox_path.join("config.toml");
+        let original = "## MARKER: hand-authored, must survive migration\n\
+                        [default]\nprovider = \"openai\"\n";
+        std::fs::write(&canonical_toml, original).expect("seed canonical toml");
+
+        migrate_legacy_yaml_if_needed();
+
+        let after = std::fs::read_to_string(&canonical_toml).unwrap_or_default();
+
+        // Restore env BEFORE assertions so a failure doesn't leak state.
+        match prev_wh {
+            Some(v) => unsafe { std::env::set_var(wh_key, v) },
+            None => unsafe { std::env::remove_var(wh_key) },
+        }
+        match prev_xdg {
+            Some(v) => unsafe { std::env::set_var(xdg_key, v) },
+            None => unsafe { std::env::remove_var(xdg_key) },
+        }
+
+        assert_eq!(
+            after, original,
+            "migration re-serialized an existing config.toml — the comment and \
+             byte-for-byte content must be preserved when the canonical TOML \
+             already exists"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(wayland_home_env)]
+    fn migrate_legacy_yaml_writes_toml_on_first_run() {
+        let wh_key = "WAYLAND_HOME";
+        let xdg_key = "XDG_DATA_HOME";
+        let prev_wh = std::env::var_os(wh_key);
+        let prev_xdg = std::env::var_os(xdg_key);
+
+        let sandbox = tempfile::tempdir().expect("tempdir sandbox");
+        let sandbox_path = sandbox.path().to_path_buf();
+
+        unsafe {
+            std::env::set_var(wh_key, &sandbox_path);
+            std::env::remove_var(xdg_key);
+        }
+
+        // Legacy yaml present, no canonical TOML yet: a genuine first migration.
+        std::fs::write(
+            sandbox_path.join("config.yaml"),
+            "model:\n  default: first-run-model\n  provider: openai\n",
+        )
+        .expect("seed sandbox yaml");
+
+        let canonical_toml = sandbox_path.join("config.toml");
+        assert!(!canonical_toml.exists(), "precondition: no toml yet");
+
+        migrate_legacy_yaml_if_needed();
+
+        let toml_contents = std::fs::read_to_string(&canonical_toml).unwrap_or_default();
+
+        match prev_wh {
+            Some(v) => unsafe { std::env::set_var(wh_key, v) },
+            None => unsafe { std::env::remove_var(wh_key) },
+        }
+        match prev_xdg {
+            Some(v) => unsafe { std::env::set_var(xdg_key, v) },
+            None => unsafe { std::env::remove_var(xdg_key) },
+        }
+
+        assert!(
+            canonical_toml.exists(),
+            "first migration must create the canonical TOML"
+        );
+        assert!(
+            toml_contents.contains("first-run-model"),
+            "first migration must carry the legacy model into the TOML; got:\n{toml_contents}"
+        );
     }
 }
