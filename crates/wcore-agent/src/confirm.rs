@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 
 pub struct ToolConfirmer {
     auto_approve: bool,
@@ -36,6 +36,23 @@ impl ToolConfirmer {
     pub fn check(&mut self, tool_name: &str, tool_input_display: &str) -> ConfirmResult {
         if self.auto_approve || self.allow_list.contains(tool_name) {
             return ConfirmResult::Approved;
+        }
+
+        // No interactive terminal — a daemon, a piped invocation, or a
+        // channel-driven turn (the inbound subscriber runs turns with no
+        // TTY). There is no human to answer the prompt, and a blocking
+        // `read_line` on a stdin that never reaches EOF (e.g. a held-open
+        // pipe keeping a daemon alive) would hang the turn forever. Fail
+        // closed: a tool that needs confirmation but cannot get it is denied.
+        // Auto-approve and allow-listed tools are already handled above, so
+        // this only gates tools that would otherwise prompt.
+        if !io::stdin().is_terminal() {
+            tracing::debug!(
+                target: "wcore_agent::confirm",
+                tool = %tool_name,
+                "tool needs confirmation but stdin is not a terminal; denying (no interactive approver)"
+            );
+            return ConfirmResult::Denied;
         }
 
         eprint!(

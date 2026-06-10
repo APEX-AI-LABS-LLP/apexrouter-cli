@@ -210,15 +210,61 @@ impl Channel for TelegramChannel {
 
     async fn send_message(&mut self, msg: OutgoingMessage) -> Result<MessageReceipt, ChannelError> {
         let token = self.bot_token.as_deref().ok_or(ChannelError::NotStarted)?;
-        let body = api::SendMessageBody {
-            chat_id: &msg.conversation_id,
-            text: &msg.text,
-            parse_mode: Some(self.config.parse_mode.as_api_str()),
-            reply_to_message_id: msg.reply_to.as_deref().and_then(|s| s.parse::<i64>().ok()),
-        };
-        let result = api::send_message(&self.http, &self.api_base, token, &body)
-            .await
-            .map_err(ChannelError::from)?;
+        let reply_to = msg.reply_to.as_deref().and_then(|s| s.parse::<i64>().ok());
+
+        // Track the most recent successful send so the receipt reflects
+        // the last thing Telegram accepted (text first, then each
+        // attachment). At least one of text/attachments is always sent.
+        let mut last_result: Option<api::Message> = None;
+
+        // ---- Text -------------------------------------------------------
+        // Skip the text send entirely when the body is empty but there are
+        // attachments — Telegram rejects empty-body sendMessage, and the
+        // documents carry the payload in that case.
+        let has_attachments = !msg.attachments.is_empty();
+        if !msg.text.is_empty() || !has_attachments {
+            // Under MarkdownV2 every reserved character must be backslash-escaped
+            // or Telegram rejects the send with `400 ... can't parse entities`.
+            // We escape the full text (see `escape_markdown_v2` docs for v1
+            // semantics). HTML / legacy Markdown have different escaping rules and
+            // are left untouched here. `escaped` outlives `body`'s borrow.
+            let escaped;
+            let text: &str = match self.config.parse_mode {
+                ParseMode::MarkdownV2 => {
+                    escaped = config::escape_markdown_v2(&msg.text);
+                    &escaped
+                }
+                ParseMode::Html | ParseMode::Markdown => &msg.text,
+            };
+            let body = api::SendMessageBody {
+                chat_id: &msg.conversation_id,
+                text,
+                parse_mode: Some(self.config.parse_mode.as_api_str()),
+                reply_to_message_id: reply_to,
+            };
+            let result = api::send_message(&self.http, &self.api_base, token, &body)
+                .await
+                .map_err(ChannelError::from)?;
+            last_result = Some(result);
+        }
+
+        // ---- Attachments ------------------------------------------------
+        // Each attachment URL is fetched by Telegram itself via sendDocument
+        // (no local upload, no SSRF surface on our side). sendDocument works
+        // for arbitrary file URLs — images included — which keeps v1 simple.
+        for url in &msg.attachments {
+            let body = api::build_send_document(&msg.conversation_id, url, None, reply_to);
+            let result = api::send_document(&self.http, &self.api_base, token, &body)
+                .await
+                .map_err(ChannelError::from)?;
+            last_result = Some(result);
+        }
+
+        // `last_result` is always Some: we send text unless there are
+        // attachments, and we send at least one attachment otherwise.
+        let result = last_result.ok_or_else(|| {
+            ChannelError::Other("send_message produced no outbound request".to_string())
+        })?;
         Ok(MessageReceipt {
             id: result.message_id.to_string(),
             conversation_id: msg.conversation_id,
@@ -226,8 +272,47 @@ impl Channel for TelegramChannel {
         })
     }
 
+    /// POST `sendChatAction` with `action: "typing"`. Best-effort: the
+    /// typing indicator auto-expires after ~5s, which is why the inbound
+    /// subscriber refreshes it. A single attempt is sufficient — transport
+    /// failures map to [`ChannelError::Transport`] and are logged + ignored
+    /// by the caller, never fatal to the turn.
+    async fn send_typing(&self, conversation_id: &str) -> Result<(), ChannelError> {
+        let token = self.bot_token.as_deref().ok_or(ChannelError::NotStarted)?;
+        let body = api::build_send_chat_action(conversation_id);
+        api::send_chat_action(&self.http, &self.api_base, token, &body)
+            .await
+            .map_err(ChannelError::from)
+    }
+
+    /// POST `setMessageReaction` with a single emoji. `message_id` arrives
+    /// as a string and must parse to an `i64`; a parse failure is a caller
+    /// bug and surfaces as [`ChannelError::Rejected`]. We do not validate
+    /// the emoji against Telegram's fixed reaction set — an unknown emoji is
+    /// rejected by Telegram with a 400, which maps to `Rejected`.
+    async fn react(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        emoji: &str,
+    ) -> Result<(), ChannelError> {
+        let token = self.bot_token.as_deref().ok_or(ChannelError::NotStarted)?;
+        let message_id: i64 = message_id
+            .parse()
+            .map_err(|_| ChannelError::Rejected("invalid message_id".to_string()))?;
+        let body = api::build_set_reaction(conversation_id, message_id, emoji);
+        api::set_message_reaction(&self.http, &self.api_base, token, &body)
+            .await
+            .map_err(ChannelError::from)
+    }
+
     fn config_schema(&self) -> &str {
         include_str!("schemas/telegram.json")
+    }
+
+    /// Telegram caps a single message at 4096 characters.
+    fn max_message_len(&self) -> Option<usize> {
+        Some(4096)
     }
 }
 
@@ -289,6 +374,13 @@ mod tests {
 
     const TEST_TOKEN: &str = "111:AAAA-test-bot-token";
 
+    #[test]
+    fn max_message_len_is_telegram_cap() {
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let ch = TelegramChannel::new("test", cfg(), creds);
+        assert_eq!(ch.max_message_len(), Some(4096));
+    }
+
     // -----------------------------------------------------------------
     // 1. send_message hits sendMessage with token + JSON body.
     // -----------------------------------------------------------------
@@ -319,6 +411,67 @@ mod tests {
         assert_eq!(receipt.id, "42");
         assert_eq!(receipt.conversation_id, "42");
         assert_eq!(receipt.ts_secs, 1_700_000_000);
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 1b. MarkdownV2 channel escapes reserved chars in the send payload;
+    //     HTML channel sends the raw text (no MarkdownV2 escaping). This
+    //     is the HIGH-9 regression guard: a reply like `Hi! (ok).` must
+    //     reach Telegram as `Hi\! \(ok\)\.` under MarkdownV2.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn markdown_v2_escapes_payload_text() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .match_body(mockito::Matcher::PartialJsonString(
+                // JSON-encoded form of `Hi\! \(ok\)\.` — each backslash is
+                // doubled because it is itself escaped in the JSON string.
+                r#"{"text":"Hi\\! \\(ok\\)\\.","parse_mode":"MarkdownV2"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        ch.send_message(OutgoingMessage::text("1", "Hi! (ok)."))
+            .await
+            .unwrap();
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn html_mode_does_not_apply_markdown_v2_escaping() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .match_body(mockito::Matcher::PartialJsonString(
+                // Raw text, unescaped, under HTML parse mode.
+                r#"{"text":"Hi! (ok).","parse_mode":"HTML"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let html_cfg = TelegramConfig {
+            parse_mode: ParseMode::Html,
+            ..cfg()
+        };
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", html_cfg, creds, server.url());
+        ch.start().await.unwrap();
+        ch.send_message(OutgoingMessage::text("1", "Hi! (ok)."))
+            .await
+            .unwrap();
         mock.assert_async().await;
         ch.stop().await.unwrap();
     }
@@ -592,6 +745,296 @@ parse_mode = "MarkdownV2"
             .await
             .expect_err("expected NotStarted");
         assert!(matches!(err, ChannelError::NotStarted), "got {err:?}");
+    }
+
+    // -----------------------------------------------------------------
+    // 9. Inbound media: file_id is resolved to a real download URL via
+    //    getFile, and the typed Attachment carries it.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn inbound_photo_resolves_download_url_via_get_file() {
+        let mut server = mockito::Server::new_async().await;
+        // getUpdates returns one message with a photo (two sizes).
+        let _m_upd = server
+            .mock("GET", format!("/bot{TEST_TOKEN}/getUpdates").as_str())
+            .match_query(mockito::Matcher::UrlEncoded("offset".into(), "0".into()))
+            .with_status(200)
+            .with_body(
+                r#"{"ok":true,"result":[{"update_id":1,"message":{"message_id":5,"date":1,"chat":{"id":7},"from":{"id":1,"username":"u"},"photo":[{"file_id":"small_id"},{"file_id":"big_id"}]}}]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let _m_empty = server
+            .mock("GET", format!("/bot{TEST_TOKEN}/getUpdates").as_str())
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":[]}"#)
+            .expect_at_least(0)
+            .create_async()
+            .await;
+        // getFile for the largest photo resolves to a file_path.
+        let _m_file = server
+            .mock("GET", format!("/bot{TEST_TOKEN}/getFile").as_str())
+            .match_query(mockito::Matcher::UrlEncoded(
+                "file_id".into(),
+                "big_id".into(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"file_id":"big_id","file_path":"photos/file_0.jpg"}}"#)
+            .expect_at_least(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let mut got = None;
+        while std::time::Instant::now() < deadline {
+            for e in ch.poll_events().await.unwrap() {
+                if let ChannelEvent::MessageReceived { msg } = e
+                    && !msg.attachments.is_empty()
+                {
+                    got = Some(msg);
+                    break;
+                }
+            }
+            if got.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let msg = got.expect("expected a MessageReceived event with an attachment");
+        let att = &msg.attachments[0];
+        assert_eq!(
+            att.url,
+            format!("{}/file/bot{TEST_TOKEN}/photos/file_0.jpg", server.url())
+        );
+        assert_eq!(att.content_type.as_deref(), Some("image/jpeg"));
+        // The raw file_id is preserved for re-resolution.
+        assert_eq!(att.path.as_deref(), Some("big_id"));
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 10. Outbound attachments: each URL goes out via sendDocument with
+    //     chat_id + document=<url>, after the text send.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn outbound_attachment_sends_via_send_document() {
+        let mut server = mockito::Server::new_async().await;
+        let _m_text = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let m_doc = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendDocument").as_str())
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"chat_id":"1","document":"https://example.com/a.pdf"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":2,"date":2,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        let msg = OutgoingMessage {
+            conversation_id: "1".to_string(),
+            text: "see attached".to_string(),
+            reply_to: None,
+            attachments: vec!["https://example.com/a.pdf".to_string()],
+        };
+        // Receipt reflects the last send (the document).
+        let receipt = ch.send_message(msg).await.unwrap();
+        assert_eq!(receipt.id, "2");
+        m_doc.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 11. Outbound: empty text + attachments skips sendMessage entirely
+    //     and only sends the document.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn outbound_empty_text_with_attachment_skips_send_message() {
+        let mut server = mockito::Server::new_async().await;
+        let m_text = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendMessage").as_str())
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1}}}"#)
+            .expect(0) // <- must NOT be called
+            .create_async()
+            .await;
+        let m_doc = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendDocument").as_str())
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":{"message_id":9,"date":9,"chat":{"id":1}}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        let msg = OutgoingMessage {
+            conversation_id: "1".to_string(),
+            text: String::new(),
+            reply_to: None,
+            attachments: vec!["https://example.com/b.png".to_string()],
+        };
+        let receipt = ch.send_message(msg).await.unwrap();
+        assert_eq!(receipt.id, "9");
+        m_text.assert_async().await;
+        m_doc.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 12. send_typing POSTs sendChatAction with action=typing and succeeds
+    //     on 200.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn send_typing_posts_chat_action_on_200() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", format!("/bot{TEST_TOKEN}/sendChatAction").as_str())
+            .match_header("content-type", "application/json")
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"chat_id":"42","action":"typing"}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"ok":true,"result":true}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        ch.send_typing("42").await.unwrap();
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn send_typing_before_start_errors_not_started() {
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let ch = TelegramChannel::with_api_base("test", cfg(), creds, "http://unused".to_string());
+        let err = ch
+            .send_typing("42")
+            .await
+            .expect_err("expected NotStarted");
+        assert!(matches!(err, ChannelError::NotStarted), "got {err:?}");
+    }
+
+    // -----------------------------------------------------------------
+    // 13. react POSTs setMessageReaction with the nested reaction array
+    //     and succeeds on 200.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn react_posts_set_message_reaction_on_200() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                format!("/bot{TEST_TOKEN}/setMessageReaction").as_str(),
+            )
+            .match_header("content-type", "application/json")
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"chat_id":"42","message_id":7,"reaction":[{"type":"emoji","emoji":"👀"}]}"#
+                    .to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"ok":true,"result":true}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        ch.react("42", "7", "👀").await.unwrap();
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 14. react with a non-numeric message_id is Rejected without ever
+    //     hitting the network.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn react_with_non_numeric_message_id_is_rejected() {
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        // Start so bot_token is populated and we exercise the parse path,
+        // not the NotStarted path. api_base is unused (no request is made).
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("GET", format!("/bot{TEST_TOKEN}/getUpdates").as_str())
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":[]}"#)
+            .expect_at_least(0)
+            .create_async()
+            .await;
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+
+        let err = ch
+            .react("42", "not-a-number", "👀")
+            .await
+            .expect_err("expected Rejected for bad message_id");
+        match err {
+            ChannelError::Rejected(msg) => assert!(msg.contains("invalid message_id"), "msg = {msg}"),
+            other => panic!("expected Rejected, got {other:?}"),
+        }
+        ch.stop().await.unwrap();
+    }
+
+    // -----------------------------------------------------------------
+    // 15. react maps a Telegram 400 (e.g. unknown emoji) to a clean
+    //     Rejected error.
+    // -----------------------------------------------------------------
+    #[tokio::test]
+    async fn react_maps_400_to_rejected() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock(
+                "POST",
+                format!("/bot{TEST_TOKEN}/setMessageReaction").as_str(),
+            )
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"ok":false,"error_code":400,"description":"Bad Request: REACTION_INVALID"}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let creds = InMemoryCreds::with_token("telegram.test.bot_token", TEST_TOKEN);
+        let mut ch = TelegramChannel::with_api_base("test", cfg(), creds, server.url());
+        ch.start().await.unwrap();
+        let err = ch
+            .react("42", "7", "🦄")
+            .await
+            .expect_err("expected Rejected for invalid reaction");
+        match err {
+            ChannelError::Rejected(msg) => {
+                assert!(msg.contains("400"), "msg = {msg}");
+                assert!(msg.contains("REACTION_INVALID"), "msg = {msg}");
+            }
+            other => panic!("expected Rejected, got {other:?}"),
+        }
+        mock.assert_async().await;
+        ch.stop().await.unwrap();
     }
 
     // -----------------------------------------------------------------

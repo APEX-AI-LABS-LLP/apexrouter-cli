@@ -17,9 +17,11 @@
 //!      grace window.
 //!   5. Map every `op=0 t="MESSAGE_CREATE"` to a `ChannelEvent::MessageReceived`
 //!      and queue it for `poll_events`.
-//!   6. On `op=7 RECONNECT` / `op=9 INVALID_SESSION` / socket error:
-//!      tear down + re-IDENTIFY on next session. Full RESUME (with
-//!      session_id) is deferred.
+//!   6. On `op=7 RECONNECT` / dropped socket / heartbeat lapse: tear
+//!      down and RESUME (op 6) against `resume_gateway_url`, replaying
+//!      events buffered during the gap. On `op=9 INVALID_SESSION`:
+//!      resume when `d == true`, else clear the session and fall back to
+//!      a fresh IDENTIFY after the Discord-required 1–5s wait.
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -165,6 +167,10 @@ impl Channel for DiscordChannel {
             allowed_channel_ids: allowed,
             inbox: Arc::clone(&self.inbox),
             shutdown: rx,
+            // bot_id is populated from the READY event; pre-READY messages
+            // will have is_self=false and was_mentioned=false (conservative).
+            // A future pass can resolve via GET /users/@me at start() time.
+            bot_id: None,
         };
         let handle = tokio::spawn(gateway::gateway_loop(args));
         self.gateway_handle = Some(handle);
@@ -243,6 +249,11 @@ impl Channel for DiscordChannel {
 
     fn config_schema(&self) -> &str {
         include_str!("schemas/discord.json")
+    }
+
+    /// Discord caps a single message at 2000 characters.
+    fn max_message_len(&self) -> Option<usize> {
+        Some(2000)
     }
 }
 
@@ -491,6 +502,13 @@ heartbeat_grace_ms = 8000
         assert_eq!(cfg.allowed_channel_ids, vec!["111", "222"]);
         assert_eq!(cfg.intents, 513);
         assert_eq!(cfg.heartbeat_grace_ms, 8_000);
+    }
+
+    #[test]
+    fn max_message_len_is_discord_cap() {
+        let creds = InMemoryCreds::with_token("discord.test.bot_token", TEST_TOKEN);
+        let ch = DiscordChannel::new("test", cfg(), creds);
+        assert_eq!(ch.max_message_len(), Some(2000));
     }
 
     // -----------------------------------------------------------------

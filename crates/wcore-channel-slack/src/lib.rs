@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use tokio::sync::Mutex;
 use wcore_channels::{
-    Channel, ChannelError,
+    Channel, ChannelError, WebhookRequest, WebhookResponse,
     event::{ChannelEvent, ConnectionState, MessageReceipt},
     outgoing::OutgoingMessage,
 };
@@ -264,6 +264,40 @@ impl Channel for SlackChannel {
 
     fn config_schema(&self) -> &str {
         include_str!("../schemas/slack.json")
+    }
+
+    /// Slack caps a single message around 40k characters; 39k is conservative.
+    fn max_message_len(&self) -> Option<usize> {
+        Some(39_000)
+    }
+
+    /// Verify a Slack Events API POST and enqueue any resulting event.
+    ///
+    /// Pulls the `X-Slack-Signature` + `X-Slack-Request-Timestamp` headers
+    /// the platform sends, then delegates to [`Self::ingest_event`] (which
+    /// runs the signing-secret HMAC + timestamp window). A
+    /// `url_verification` challenge surfaces as a `200` echoing the
+    /// challenge string; everything else is an empty `200`.
+    async fn ingest_webhook(
+        &self,
+        req: &WebhookRequest,
+    ) -> Result<WebhookResponse, ChannelError> {
+        let (sig, ts) = match (
+            req.header("x-slack-signature"),
+            req.header("x-slack-request-timestamp"),
+        ) {
+            (Some(sig), Some(ts)) => (sig, ts),
+            _ => {
+                return Err(ChannelError::Auth(
+                    "missing slack signature headers".into(),
+                ));
+            }
+        };
+        match self.ingest_event(&req.body, sig, ts).await {
+            Ok(Some(challenge)) => Ok(WebhookResponse::challenge(challenge)),
+            Ok(None) => Ok(WebhookResponse::ok()),
+            Err(e) => Err(ChannelError::Rejected(e.to_string())),
+        }
     }
 }
 
@@ -540,6 +574,12 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(ch.config_schema()).expect("schema parses");
         assert_eq!(parsed["title"].as_str(), Some("SlackChannelConfig"));
+    }
+
+    #[tokio::test]
+    async fn max_message_len_is_slack_cap() {
+        let ch = SlackChannel::new("test", cfg_for("https://unused.example"), store_for_test());
+        assert_eq!(ch.max_message_len(), Some(39_000));
     }
 
     #[tokio::test]

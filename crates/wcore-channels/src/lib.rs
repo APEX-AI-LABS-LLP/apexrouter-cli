@@ -14,19 +14,32 @@
 //! came from.
 
 pub mod auto_register;
+pub mod chunk;
 pub mod config;
+pub mod dispatch;
 pub mod error;
 pub mod event;
 pub mod manager;
 pub mod mock;
 pub mod outgoing;
+pub mod webhook;
 
+pub use chunk::chunk_message;
 pub use config::{ChannelConfig, ChannelConfigLoader};
+pub use dispatch::{
+    build_session_key, classify, decide_access, evaluate, AccessDecision, AckMode,
+    ChannelToolPosture, DedupeCache, DedupeKey, DispatchOutcome, DmPolicy, GroupPolicy,
+    InboundPolicy, TurnAdmission,
+};
 pub use error::ChannelError;
-pub use event::{ChannelEvent, ConnectionState, IncomingMessage, MessageReceipt};
+pub use event::{
+    Attachment, ChannelEvent, ChatType, ConnectionState, IncomingMessage, MediaKind, MentionKind,
+    MessageReceipt,
+};
 pub use manager::{ChannelManager, TaggedEvent};
 pub use mock::MockChannel;
 pub use outgoing::OutgoingMessage;
+pub use webhook::{WebhookRequest, WebhookResponse};
 
 use async_trait::async_trait;
 
@@ -71,4 +84,67 @@ pub trait Channel: Send + Sync {
     /// config TOML. UI uses this to render a setup form; tests use
     /// it to validate config files.
     fn config_schema(&self) -> &str;
+
+    /// Maximum length (in Unicode scalar values) of a single outbound
+    /// message this platform accepts, or `None` when effectively
+    /// unbounded / unknown. [`ChannelManager::send_to`] splits longer
+    /// bodies into in-order chunks via
+    /// [`chunk_message`](crate::chunk::chunk_message) before sending, so
+    /// an over-long agent reply is delivered in pieces instead of being
+    /// rejected and dropped by the platform. Each connector declares its
+    /// own cap here — the shared layer never hardcodes a per-platform
+    /// limit.
+    fn max_message_len(&self) -> Option<usize> {
+        None
+    }
+
+    /// Send a transient "typing…" indicator to `conversation_id`.
+    ///
+    /// Default: no-op `Ok(())` — platforms without a typing API simply do
+    /// nothing. The inbound subscriber calls this periodically while a turn
+    /// is running (when the channel's ack mode enables typing) so a human
+    /// sees the bot is working. Must be cheap and best-effort; a failure is
+    /// logged and ignored, never fatal to the turn.
+    async fn send_typing(&self, _conversation_id: &str) -> Result<(), ChannelError> {
+        Ok(())
+    }
+
+    /// React to a message with a single unicode emoji — the ack/status
+    /// signal used by the subscriber's ack state machine (👀 received →
+    /// ✅ done / ❌ failed).
+    ///
+    /// Default: `Rejected` (the platform has no reaction API, or it isn't
+    /// implemented for this connector). The subscriber treats a reaction
+    /// failure as non-fatal.
+    async fn react(
+        &self,
+        _conversation_id: &str,
+        _message_id: &str,
+        _emoji: &str,
+    ) -> Result<(), ChannelError> {
+        Err(ChannelError::Rejected("reactions unsupported".to_string()))
+    }
+
+    /// Handle an inbound webhook HTTP request routed to this channel by
+    /// the inbound webhook host.
+    ///
+    /// Default: **unsupported** — poll-based connectors (telegram,
+    /// matrix, signal, …) and any connector whose inbound path is not yet
+    /// signature-verified return `Rejected`, so the host never exposes an
+    /// unauthenticated parse to the network. Webhook connectors that
+    /// verify the platform signature (Slack, WhatsApp, Twilio SMS)
+    /// override this to verify → parse → enqueue (mirroring their existing
+    /// `ingest_*` methods) and return a [`WebhookResponse`].
+    ///
+    /// Takes `&self` (not `&mut self`): connectors enqueue through their
+    /// interior-mutable inbox, so the host can ingest concurrently with
+    /// the poll loop without an exclusive borrow.
+    async fn ingest_webhook(
+        &self,
+        _req: &WebhookRequest,
+    ) -> Result<WebhookResponse, ChannelError> {
+        Err(ChannelError::Rejected(
+            "channel does not accept inbound webhooks".to_string(),
+        ))
+    }
 }

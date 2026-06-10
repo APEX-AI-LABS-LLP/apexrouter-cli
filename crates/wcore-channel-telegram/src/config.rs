@@ -59,6 +59,41 @@ impl ParseMode {
     }
 }
 
+/// Escape every character Telegram reserves under MarkdownV2 by prefixing
+/// it with a backslash.
+///
+/// Telegram's MarkdownV2 spec requires these characters be escaped in ALL
+/// text (not just inside entities):
+/// `_ * [ ] ( ) ~ ` > # + - = | { } . !`
+///
+/// v1 semantics: we escape the FULL message text, so the body is always
+/// delivered as valid literal text and Telegram never returns
+/// `400 Bad Request: can't parse entities`. The tradeoff is that any
+/// model-emitted Markdown formatting (`*bold*`, `[label](url)`) is rendered
+/// literally rather than interpreted. That is the correct, safe default for
+/// v1 — never 400. Formatting fidelity via selective escaping (escaping only
+/// the reserved characters that are NOT part of intended markup) is a future
+/// enhancement.
+///
+/// This is MarkdownV2-specific. It must NOT be applied to `HTML` parse mode
+/// (HTML has its own escaping rules — `< > &` — out of scope here) nor to the
+/// legacy `Markdown` parse mode (which has a different, smaller reserved set:
+/// `_ * ` [`). Callers gate on `parse_mode == MarkdownV2`.
+pub fn escape_markdown_v2(s: &str) -> String {
+    // Reserved set per https://core.telegram.org/bots/api#markdownv2-style
+    const RESERVED: &[char] = &[
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!',
+    ];
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if RESERVED.contains(&ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +137,46 @@ unknown = "boom"
             err.to_string().contains("unknown"),
             "error should mention unknown field, got: {err}"
         );
+    }
+
+    #[test]
+    fn escape_markdown_v2_escapes_every_reserved_char() {
+        for ch in [
+            '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.',
+            '!',
+        ] {
+            let input = ch.to_string();
+            let escaped = escape_markdown_v2(&input);
+            assert_eq!(
+                escaped,
+                format!("\\{ch}"),
+                "reserved char {ch:?} should be backslash-escaped"
+            );
+        }
+    }
+
+    #[test]
+    fn escape_markdown_v2_realistic_reply() {
+        // `Hello! I'm here. (ready)` -> `!`, `.`, `(`, `)` get escaped.
+        // The apostrophe is NOT reserved and stays as-is.
+        let input = "Hello! I'm here. (ready)";
+        let escaped = escape_markdown_v2(input);
+        assert_eq!(escaped, "Hello\\! I'm here\\. \\(ready\\)");
+    }
+
+    #[test]
+    fn escape_markdown_v2_plain_alphanumeric_unchanged() {
+        let input = "abc 123 XYZ";
+        assert_eq!(escape_markdown_v2(input), input);
+    }
+
+    #[test]
+    fn escape_markdown_v2_backslash_prefix_is_correct() {
+        // A literal backslash is itself NOT in the reserved set, so it is
+        // left untouched; the reserved char following it still gets its own
+        // backslash. Verifies we only prepend `\` to reserved chars.
+        let escaped = escape_markdown_v2("a\\b.c");
+        assert_eq!(escaped, "a\\b\\.c");
     }
 
     #[test]
