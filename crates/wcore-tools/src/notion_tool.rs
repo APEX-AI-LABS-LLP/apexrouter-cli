@@ -512,6 +512,7 @@ impl Tool for NotionTool {
                 },
                 "children": {
                     "type": "array",
+                    "items": { "type": "object" },
                     "description": "Array of Notion block objects. Required for \
                                     append_block_children; optional for create_page."
                 },

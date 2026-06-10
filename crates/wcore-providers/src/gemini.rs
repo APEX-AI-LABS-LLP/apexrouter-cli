@@ -498,6 +498,16 @@ pub(crate) fn sanitize_schema_for_gemini(schema: &Value) -> Value {
                     }
                 }
             }
+            // F-008c: Gemini rejects an `array` schema that omits `items`
+            // (OpenAI/Anthropic are lenient). A tool whose schema omits it 400s
+            // the ENTIRE request at tool registration, making Gemini unusable
+            // with that toolset. Inject a permissive default so any
+            // array-without-items tool still registers and works on Gemini.
+            if out.get("type").and_then(Value::as_str) == Some("array")
+                && !out.contains_key("items")
+            {
+                out.insert("items".to_string(), serde_json::json!({ "type": "string" }));
+            }
             Value::Object(out)
         }
         Value::Array(items) => Value::Array(items.iter().map(sanitize_schema_for_gemini).collect()),
@@ -1309,6 +1319,28 @@ mod tests {
         assert_eq!(
             out["properties"]["opt"]["type"], "string",
             "nullable union [string, null] → string"
+        );
+    }
+
+    #[test]
+    fn sanitizer_injects_items_for_array_missing_items() {
+        // F-008c regression: Gemini 400s an `array` schema with no `items`.
+        // The sanitizer must inject a default so the request still registers.
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "children": { "type": "array", "description": "blocks" },
+                "tags": { "type": "array", "items": { "type": "string" } }
+            }
+        });
+        let out = sanitize_schema_for_gemini(&schema);
+        assert_eq!(
+            out["properties"]["children"]["items"]["type"], "string",
+            "array without items gets a default items injected"
+        );
+        assert_eq!(
+            out["properties"]["tags"]["items"]["type"], "string",
+            "array that already declares items is left unchanged"
         );
     }
 
