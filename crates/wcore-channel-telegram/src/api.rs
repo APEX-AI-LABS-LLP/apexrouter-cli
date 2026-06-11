@@ -19,6 +19,15 @@ pub(crate) const SEND_BASE_BACKOFF_MS: u64 = 200;
 /// 429 retry_after collapse to this on the high side so a malicious or
 /// buggy server can't park us indefinitely.
 pub(crate) const SEND_MAX_BACKOFF_MS: u64 = 30_000;
+/// Per-request wall-clock cap for outbound sends. The egress client carries no
+/// default timeout, and the inbound subscriber awaits send_to inline while
+/// holding the per-channel slot mutex — so one hung send would otherwise freeze
+/// ALL inbound dispatch indefinitely. Bound every send so a stalled connection
+/// fails fast and releases the lock.
+const SEND_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// Tighter cap for best-effort ack signals (typing / reactions): they must
+/// never delay the turn, so a hung ack is abandoned quickly.
+const ACK_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One Telegram Update from `getUpdates`. We only model the slice this
 /// adapter consumes; unknown fields are tolerated so future API additions
@@ -243,7 +252,13 @@ async fn post_with_retry<B: Serialize>(
             tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
         }
 
-        let resp = match http.post(url).json(body).send().await {
+        let resp = match http
+            .post(url)
+            .json(body)
+            .timeout(SEND_REQUEST_TIMEOUT)
+            .send()
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 last_err = TelegramError::Http(format!("network: {e}"));
@@ -531,6 +546,7 @@ async fn post_once<B: Serialize>(
     let resp = http
         .post(url)
         .json(body)
+        .timeout(ACK_REQUEST_TIMEOUT)
         .send()
         .await
         .map_err(|e| TelegramError::Http(format!("network: {e}")))?;
