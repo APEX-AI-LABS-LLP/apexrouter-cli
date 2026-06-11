@@ -56,6 +56,10 @@ struct ChannelAccount {
     id: String,
     #[serde(default)]
     name: String,
+    /// Bot Framework actor role: `"user"` or `"bot"`. Lets the inbound parser
+    /// flag bot-authored activities so the dispatch loop guard drops them.
+    #[serde(default)]
+    role: String,
 }
 
 /// `conversation` — the Bot Framework conversation reference.
@@ -165,9 +169,11 @@ pub fn activity_to_incoming(
         chat_name,
         account_id,
         platform: Some("msteams".into()),
-        // Teams does not echo the bot's own outbound back to its endpoint,
-        // so there is no reliable self-loop to guard here; leave is_self
-        // false. Attachments are deferred to a follow-up (see module docs).
+        // Bot Framework stamps the sender's role; a "bot" actor is another bot,
+        // so flag it and let the dispatch kernel's loop guard drop it instead of
+        // engaging in a bot-to-bot loop. Teams does not echo the bot's own
+        // outbound back, so is_self has no reliable signal and stays false.
+        is_bot: activity.from.role.eq_ignore_ascii_case("bot"),
         ..IncomingMessage::new(activity.id, conversation_id, author, activity.text, ts_secs)
     };
 
@@ -242,7 +248,28 @@ mod tests {
         // 2026-06-10T12:34:56Z epoch seconds.
         assert_eq!(msg.ts_secs, 1_781_094_896);
         assert!(!msg.is_self);
+        // A normal user activity (no "bot" role) is not flagged as a bot.
+        assert!(!msg.is_bot);
         assert!(msg.attachments.is_empty());
+    }
+
+    #[test]
+    fn bot_role_activity_is_flagged_is_bot() {
+        // An activity whose `from.role` is "bot" must set is_bot so the dispatch
+        // kernel's loop guard drops it (prevents bot-to-bot loops).
+        let body = r#"{
+            "type": "message",
+            "id": "id-bot",
+            "text": "automated",
+            "from": { "id": "28:other-bot", "name": "Other Bot", "role": "bot" },
+            "conversation": { "id": "19:abc@thread.v2" },
+            "serviceUrl": "https://smba.trafficmanager.net/emea/",
+            "timestamp": "2026-06-10T12:34:56Z"
+        }"#;
+        let msg = activity_to_incoming(body, SERVICE_FALLBACK)
+            .expect("parses")
+            .expect("is a message");
+        assert!(msg.is_bot, "from.role=bot must set is_bot");
     }
 
     #[test]
