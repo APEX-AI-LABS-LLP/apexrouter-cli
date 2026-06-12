@@ -268,82 +268,44 @@ pub(crate) struct OutboundAttachment {
 
 /// Resolve an [`OutgoingMessage`] attachment reference to embeddable bytes.
 ///
-/// Supported forms:
-/// - `data:<mime>;base64,<payload>` — inline bytes (no I/O, no network).
-/// - a local filesystem path — read from disk; filename from the basename and
-///   content-type inferred from the extension.
+/// **Only `data:<mime>;base64,<payload>` references are accepted** — inline
+/// bytes, no I/O and no network. Everything else (local filesystem paths,
+/// `http(s)://` URLs, anything unrecognized) is rejected with an explicit
+/// error so the attachment fails loudly rather than being silently dropped.
 ///
-/// Remote `http(s)://` URLs are rejected with an explicit error. Email has no
-/// platform media-host allowlist, so fetching an arbitrary URL server-side
-/// would be an SSRF surface; rejecting keeps the drop loud (the whole point of
-/// this fix) rather than silently fetching or silently discarding.
+/// Why no local paths and no remote fetch: `OutgoingMessage.attachments` is
+/// produced by the agent, and inbound channel content can steer the agent via
+/// prompt injection. Reading an arbitrary local path here (e.g.
+/// `/etc/passwd`, `~/.ssh/id_rsa`) would let an attacker exfiltrate host files
+/// by email; fetching an arbitrary URL (email has no media-host allowlist)
+/// would be an SSRF surface. Requiring inline `data:` bytes removes both: the
+/// caller (host integration / a deliberate tool) must commit the exact bytes,
+/// and the inbound side already emits `data:` URLs for attachments, so
+/// receive-then-reply round-trips unchanged.
 ///
 /// [`OutgoingMessage`]: wcore_channels::outgoing::OutgoingMessage
 pub(crate) fn resolve_attachment(reference: &str) -> Result<OutboundAttachment, EmailError> {
     let trimmed = reference.trim();
 
-    if let Some(rest) = trimmed.strip_prefix("data:") {
-        let (meta, b64) = rest.split_once(";base64,").ok_or_else(|| {
-            EmailError::Envelope(format!("unsupported data URL attachment: {reference}"))
-        })?;
-        let mime = if meta.is_empty() {
-            "application/octet-stream"
-        } else {
-            meta
-        };
-        return Ok(OutboundAttachment {
-            filename: format!("attachment{}", ext_for_mime(mime)),
-            content_type: mime.to_string(),
-            bytes: crate::imap::decode_base64_bytes(b64),
-        });
-    }
-
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
+    let Some(rest) = trimmed.strip_prefix("data:") else {
         return Err(EmailError::Envelope(format!(
-            "remote attachment URLs are not supported for email \
-             (no media-host allowlist — fetching would be an SSRF surface): {reference}"
+            "unsupported email attachment reference (only data: URLs are accepted; \
+             local paths and remote URLs are rejected to avoid file-exfiltration / SSRF): {reference}"
         )));
-    }
-
-    let path = std::path::Path::new(trimmed);
-    let bytes = std::fs::read(path)
-        .map_err(|e| EmailError::Envelope(format!("read attachment {reference}: {e}")))?;
-    let filename = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("attachment")
-        .to_string();
+    };
+    let (meta, b64) = rest.split_once(";base64,").ok_or_else(|| {
+        EmailError::Envelope(format!("unsupported data URL attachment: {reference}"))
+    })?;
+    let mime = if meta.is_empty() {
+        "application/octet-stream"
+    } else {
+        meta
+    };
     Ok(OutboundAttachment {
-        content_type: content_type_for_path(trimmed).to_string(),
-        filename,
-        bytes,
+        filename: format!("attachment{}", ext_for_mime(mime)),
+        content_type: mime.to_string(),
+        bytes: crate::imap::decode_base64_bytes(b64),
     })
-}
-
-/// Best-effort content-type from a path extension; falls back to
-/// `application/octet-stream`.
-fn content_type_for_path(path: &str) -> &'static str {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "pdf" => "application/pdf",
-        "txt" | "log" => "text/plain",
-        "csv" => "text/csv",
-        "json" => "application/json",
-        "zip" => "application/zip",
-        "mp3" => "audio/mpeg",
-        "mp4" => "video/mp4",
-        _ => "application/octet-stream",
-    }
 }
 
 /// A filename extension (including the dot) for a data-URL mime, so inline
@@ -619,21 +581,28 @@ mod tests {
     fn resolve_attachment_rejects_remote_url() {
         let err = resolve_attachment("https://evil.example/x.png").expect_err("remote rejected");
         match err {
-            EmailError::Envelope(m) => assert!(m.contains("SSRF"), "msg: {m}"),
+            EmailError::Envelope(m) => assert!(m.contains("unsupported"), "msg: {m}"),
             other => panic!("expected Envelope, got {other:?}"),
         }
     }
 
     #[test]
-    fn resolve_attachment_reads_local_file() {
+    fn resolve_attachment_rejects_local_path_no_file_read() {
+        // A local filesystem path must NOT be read — otherwise a prompt-injected
+        // agent could exfiltrate host files by email. Even an existing, readable
+        // file is rejected: only data: URLs are accepted.
         let dir = std::env::temp_dir().join(format!("wcore_email_att_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("notes.txt");
-        std::fs::write(&path, b"local bytes").unwrap();
-        let a = resolve_attachment(path.to_str().unwrap()).expect("local read");
-        assert_eq!(a.bytes, b"local bytes");
-        assert_eq!(a.filename, "notes.txt");
-        assert_eq!(a.content_type, "text/plain");
+        let path = dir.join("secret.txt");
+        std::fs::write(&path, b"top secret").unwrap();
+        let err = resolve_attachment(path.to_str().unwrap()).expect_err("local path rejected");
+        match err {
+            EmailError::Envelope(m) => assert!(m.contains("unsupported"), "msg: {m}"),
+            other => panic!("expected Envelope, got {other:?}"),
+        }
+        // And a classic traversal target is rejected without touching the FS.
+        assert!(resolve_attachment("/etc/passwd").is_err());
+        assert!(resolve_attachment("../../etc/passwd").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
