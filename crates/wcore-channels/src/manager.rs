@@ -97,7 +97,26 @@ impl ChannelManager {
             }
             {
                 let mut guard = slot.lock().await;
-                guard.start().await?;
+                if let Err(e) = guard.start().await {
+                    // Don't abort the whole loop on one channel's failure
+                    // (e.g. a missing credential) — the surviving channels
+                    // would be left unstarted in hash order. Emit a
+                    // Disconnected state for the failed channel and move on;
+                    // the failure is surfaced, not silently swallowed.
+                    tracing::warn!(
+                        target: "wcore_channels::manager",
+                        channel = %name,
+                        error = %e,
+                        "channel start() failed; skipping and continuing with the rest"
+                    );
+                    let _ = self.events_tx.send(TaggedEvent {
+                        channel_name: name.clone(),
+                        event: ChannelEvent::ConnectionStateChanged {
+                            state: ConnectionState::Disconnected,
+                        },
+                    });
+                    continue;
+                }
             }
             let task_slot = Arc::clone(slot);
             let task_name = name.clone();
@@ -659,6 +678,104 @@ mod tests {
         assert!(
             saw_recovery_msg,
             "expected the channel to resume delivering messages after reconnect"
+        );
+        mgr.stop_all().await.unwrap();
+    }
+
+    /// Test-only channel whose `start()` always fails — models a channel
+    /// with a missing credential. Used to prove `start_all` doesn't abort
+    /// the whole loop on one channel's failure.
+    struct FailingStartChannel {
+        name: String,
+    }
+
+    #[async_trait]
+    impl Channel for FailingStartChannel {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn platform(&self) -> &str {
+            "failing"
+        }
+        async fn start(&mut self) -> Result<(), ChannelError> {
+            Err(ChannelError::Auth("missing credential".into()))
+        }
+        async fn stop(&mut self) -> Result<(), ChannelError> {
+            Ok(())
+        }
+        async fn poll_events(&mut self) -> Result<Vec<ChannelEvent>, ChannelError> {
+            Ok(Vec::new())
+        }
+        async fn send_message(
+            &mut self,
+            msg: OutgoingMessage,
+        ) -> Result<MessageReceipt, ChannelError> {
+            Ok(MessageReceipt {
+                id: "failing-out".into(),
+                conversation_id: msg.conversation_id,
+                ts_secs: 0,
+            })
+        }
+        fn config_schema(&self) -> &str {
+            r#"{"name":"string","platform":"failing"}"#
+        }
+    }
+
+    #[tokio::test]
+    async fn start_all_continues_past_a_failing_channel() {
+        // One channel whose start() fails (missing credential) + one OK
+        // channel. start_all must start the OK one, spawn its poll task, and
+        // record the failure via a Disconnected event — not abort the loop.
+        let mut mgr = ChannelManager::new().with_poll_interval(Duration::from_millis(15));
+        let mut rx = mgr.subscribe();
+        mgr.register(Box::new(FailingStartChannel {
+            name: "broken".into(),
+        }))
+        .await;
+        let mut ok = MockChannel::new("good");
+        ok.inject_text("c1", "alice", "hi");
+        mgr.register(Box::new(ok)).await;
+
+        // Aggregate result is Ok even though one channel failed to start.
+        mgr.start_all().await.unwrap();
+
+        // The OK channel got a poll task; the failing one did not.
+        assert!(
+            mgr.poll_tasks.contains_key("good"),
+            "the healthy channel must be started and supervised"
+        );
+        assert!(
+            !mgr.poll_tasks.contains_key("broken"),
+            "the failing channel must NOT have a poll task"
+        );
+
+        // Drain events: we must see a Disconnected for "broken" (the recorded
+        // failure) and the OK channel's injected message (it really started).
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        let mut saw_broken_disconnected = false;
+        let mut saw_good_message = false;
+        while std::time::Instant::now() < deadline && !(saw_broken_disconnected && saw_good_message)
+        {
+            match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+                Ok(Ok(tagged)) => match tagged.event {
+                    ChannelEvent::ConnectionStateChanged {
+                        state: ConnectionState::Disconnected,
+                    } if tagged.channel_name == "broken" => saw_broken_disconnected = true,
+                    ChannelEvent::MessageReceived { .. } if tagged.channel_name == "good" => {
+                        saw_good_message = true;
+                    }
+                    _ => {}
+                },
+                _ => continue,
+            }
+        }
+        assert!(
+            saw_broken_disconnected,
+            "expected a Disconnected event recording the failed channel"
+        );
+        assert!(
+            saw_good_message,
+            "expected the healthy channel to actually poll + deliver"
         );
         mgr.stop_all().await.unwrap();
     }
