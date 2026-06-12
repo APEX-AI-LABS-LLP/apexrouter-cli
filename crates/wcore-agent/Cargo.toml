@@ -159,6 +159,13 @@ tempfile.workspace     = true
 tar.workspace          = true
 flate2.workspace       = true
 tokio-postgres.workspace = true
+# rank-42 — TLS for `sslmode=require`/`verify-ca`/`verify-full` managed
+# Postgres. `tokio-postgres-rustls` provides `MakeRustlsConnect`; `rustls`
+# builds the `ClientConfig`; `webpki-roots` is the public-CA trust store.
+# Matches the workspace rustls 0.23 / tokio-rustls 0.26 stack — no openssl.
+tokio-postgres-rustls.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
 # Issue #14 — voice_mode mic-capture deps. Optional + gated behind the
 # off-by-default `voice` feature so the default binary does NOT link the OS
 # audio lib (libasound.so.2 / ALSA on Linux), which must not be a hard

@@ -243,10 +243,19 @@ tar    = "0.4"
 flate2 = "1"
 
 # v0.9.0 W1 B8 postgres_schema_tool backend — real tokio-postgres client
-# with NoTls + chrono mapping for timestamp columns. SSRF mitigation is
-# enforced at connection-config parse time (private-range host rejection)
-# inside `crates/wcore-agent/src/tool_backends/postgres_schema.rs`.
+# with chrono mapping for timestamp columns. SSRF mitigation is enforced at
+# connection-config parse time (private-range host rejection) inside
+# `crates/wcore-agent/src/tool_backends/postgres_schema.rs`.
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+# rank-42 fix — TLS for managed Postgres (`sslmode=require`/`verify-ca`/
+# `verify-full`). `tokio-postgres-rustls` matches the workspace rustls 0.23 /
+# tokio-rustls 0.26 stack (NO native-tls/openssl). `rustls` is referenced
+# directly to build the `ClientConfig`; `webpki-roots` supplies the trust
+# store (public CAs cover Supabase/RDS/Neon). All three are already resolved
+# transitively in Cargo.lock, so this adds no new transitive deps.
+tokio-postgres-rustls = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
 
 # LRU cache (for file state tracking)
 lru = "0.18"
