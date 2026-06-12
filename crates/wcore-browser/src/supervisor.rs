@@ -136,6 +136,9 @@ impl BrowserSupervisor {
         drop(guard);
         if let Some(h) = removed {
             terminate_pid(h.pid);
+            // Drop the stashed Child handle so its fds + zombie slot are
+            // released instead of being held for the host process lifetime.
+            release_child(session_id);
             let pid_path = self.config.pid_dir.join(format!("{session_id}.pid"));
             let _ = std::fs::remove_file(&pid_path);
             true
@@ -166,6 +169,33 @@ impl BrowserSupervisor {
         let sessions = Arc::clone(&self.sessions);
         let pid_dir = self.config.pid_dir.clone();
         *self.reaper_cancel.lock() = Some(cancel.clone());
+
+        // Schedule the healthcheck loop on the same cancellation token. A
+        // zero interval means "disabled" — `tokio::time::interval` panics on a
+        // zero period, so we skip scheduling entirely in that case.
+        if !self.config.healthcheck_interval.is_zero() {
+            let cancel_for_health = cancel.clone();
+            let hc_interval = self.config.healthcheck_interval;
+            let sup = Arc::clone(self);
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(hc_interval);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                // Drop the immediate first tick so we wait one full interval
+                // before the initial probe, matching the reaper cadence.
+                ticker.tick().await;
+                loop {
+                    tokio::select! {
+                        _ = cancel_for_health.cancelled() => break,
+                        _ = ticker.tick() => {
+                            // Best-effort liveness probe; errors are non-fatal
+                            // (sidecar may be starting/restarting).
+                            let _ = sup.healthcheck(hc_interval).await;
+                        }
+                    }
+                }
+            });
+        }
+
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -255,13 +285,24 @@ impl Drop for BrowserSupervisor {
 /// die — we'd kill children before the orphan-reaper logic gets to run.
 /// Stashing here means the child outlives the supervisor and the reaper
 /// owns the SIGTERM path.
-fn retain_child(session: &str, child: tokio::process::Child) {
+fn children_map()
+-> &'static parking_lot::Mutex<std::collections::HashMap<String, tokio::process::Child>> {
     use parking_lot::Mutex as PM;
     use std::collections::HashMap;
     use std::sync::OnceLock;
     static CHILDREN: OnceLock<PM<HashMap<String, tokio::process::Child>>> = OnceLock::new();
-    let m = CHILDREN.get_or_init(|| PM::new(HashMap::new()));
-    m.lock().insert(session.to_string(), child);
+    CHILDREN.get_or_init(|| PM::new(HashMap::new()))
+}
+
+fn retain_child(session: &str, child: tokio::process::Child) {
+    children_map().lock().insert(session.to_string(), child);
+}
+
+/// Drop the stashed `Child` handle for `session`, releasing its fds + zombie
+/// slot so the OS can reap it. Called by `on_session_end` after `terminate_pid`
+/// so the handle no longer loiters for the host process lifetime.
+fn release_child(session: &str) {
+    children_map().lock().remove(session);
 }
 
 /// Returns `true` if the process with `pid` is alive. Implementation:
@@ -469,6 +510,94 @@ mod tests {
             sup.live_sessions().len(),
             1,
             "reaper should have left the live-parent session alone"
+        );
+    }
+
+    // Spawns a real `true` process as the stashed child; `true` is a Unix
+    // builtin/binary with no Windows equivalent on PATH, so gate to unix.
+    // `#[tokio::test]`: dropping a `tokio::process::Child` reaps via pidfd,
+    // which requires a running reactor.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn on_session_end_releases_stashed_child_handle() {
+        // R64: `on_session_end` must drop the stashed `Child` handle so its
+        // fds + zombie slot are released instead of being held for the host
+        // lifetime. Use a real short-lived child as the stashed handle and
+        // assert the CHILDREN entry is gone after the session ends.
+        let sup = BrowserSupervisor::new();
+        let sid = "release-child-test";
+        // A trivially-short child stands in for the Camoufox sidecar; we only
+        // need a real `tokio::process::Child` to stash and then drop.
+        let child = tokio::process::Command::new(if std::path::Path::new("/bin/true").exists() {
+            "/bin/true"
+        } else {
+            "true"
+        })
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn /bin/true");
+        retain_child(sid, child);
+        assert!(
+            children_map().lock().contains_key(sid),
+            "child handle should be stashed before session end"
+        );
+        sup.register(BackendHandle {
+            session_id: sid.into(),
+            pid: 0x7fff_fffd,
+            parent_pid: 0x7fff_fffe,
+        });
+        assert!(sup.on_session_end(sid));
+        assert!(
+            !children_map().lock().contains_key(sid),
+            "on_session_end must remove the stashed child handle"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_reaper_skips_healthcheck_when_interval_zero() {
+        // R63: a zero healthcheck_interval means "disabled". The scheduler
+        // must skip it entirely — `tokio::time::interval(0)` would otherwise
+        // panic. Reaching the assertion proves no panic occurred.
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = SupervisorConfig {
+            pid_dir: tmp.path().to_path_buf(),
+            reaper_interval: Duration::from_millis(50),
+            healthcheck_interval: Duration::ZERO,
+            healthcheck_url: "http://unused.invalid/".into(),
+        };
+        let sup = Arc::new(BrowserSupervisor::with_config(cfg));
+        let cancel = sup.start_reaper();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn start_reaper_schedules_healthcheck_probe() {
+        // R63: a non-zero healthcheck_interval must auto-schedule periodic
+        // probes against `healthcheck_url`. Drive a mock server and assert it
+        // receives at least one request from the scheduled loop.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = SupervisorConfig {
+            pid_dir: tmp.path().to_path_buf(),
+            reaper_interval: Duration::from_secs(3600),
+            healthcheck_interval: Duration::from_millis(50),
+            healthcheck_url: format!("{}/health", server.uri()),
+        };
+        let sup = Arc::new(BrowserSupervisor::with_config(cfg));
+        let cancel = sup.start_reaper();
+        // First probe fires one full interval in; wait a few cycles.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        cancel.cancel();
+        let hits = server.received_requests().await.unwrap_or_default();
+        assert!(
+            !hits.is_empty(),
+            "scheduled healthcheck loop should have probed /health at least once"
         );
     }
 
