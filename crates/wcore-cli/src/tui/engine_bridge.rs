@@ -883,6 +883,16 @@ impl TuiEngine {
             // real terminal events go out, so it does nothing on drop.
             let mut term = TerminalGuard::new(tx.clone(), msg_id.clone());
 
+            // Wave 2: resolve `@file`/`@dir`/`@diff` references into inline
+            // context before the engine sees the prompt. This runs off the UI
+            // thread (we are already on the spawned turn task) so `@diff`'s git
+            // subprocess never blocks rendering. The user's transcript keeps
+            // the literal `@`-tokens (appended in `send_message`); only the
+            // engine-facing prompt carries the resolved bodies. A prompt with
+            // no resolvable reference is returned unchanged.
+            let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let prompt = crate::tui::commands::at_refs::resolve_message(&prompt, &root).await;
+
             let mut guard = engine.lock().await;
             // Install this turn's cancellation token as the engine's session
             // root before `run()`. The engine loop checks it between turns

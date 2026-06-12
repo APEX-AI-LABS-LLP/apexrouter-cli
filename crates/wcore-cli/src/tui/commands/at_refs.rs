@@ -44,7 +44,7 @@
 //!   if not git-ignored, and the block is surfaced as an error, not a
 //!   silent omission.
 
-use super::{at_ref_complete, at_ref_guard, at_ref_parse, at_ref_resolve};
+use super::{at_ref_complete, at_ref_guard, at_ref_parse, at_ref_resolve, at_ref_send};
 
 // Re-export the engine's public API so `at_refs::*` paths are unchanged
 // for every existing consumer (the workspace composer calls
@@ -66,6 +66,9 @@ pub use at_ref_resolve::{
     AtPayload, AtWarning, DIR_TOKEN_WARN_BUDGET, PayloadKind, ResolvedFile, estimate_tokens,
     resolve,
 };
+// Send-time resolution (Wave 2): the engine bridge calls this on the
+// outgoing prompt so `@file`/`@dir`/`@diff` arrive as real content.
+pub use at_ref_send::resolve_message;
 
 #[cfg(test)]
 mod tests {

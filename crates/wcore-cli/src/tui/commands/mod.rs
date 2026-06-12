@@ -34,6 +34,7 @@ mod at_ref_complete;
 mod at_ref_guard;
 mod at_ref_parse;
 mod at_ref_resolve;
+mod at_ref_send;
 pub mod at_refs;
 
 use crate::tui::theme::ThemeMode;
