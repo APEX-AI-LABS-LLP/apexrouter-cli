@@ -368,6 +368,21 @@ pub struct ProviderChainConfig {
     /// Default `30` — matches the W7 spec ("recovery timeout").
     #[serde(default = "default_recovery_timeout_secs")]
     pub recovery_timeout_secs: u64,
+    /// Ordered fallback model identifiers tried (in sequence) when the
+    /// primary provider's circuit opens or it returns a retryable error.
+    /// Each entry is a model string in the same form as `[default] model`
+    /// (a literal id or a `<provider>:<role>` short-form, e.g.
+    /// `anthropic:sonnet`). Empty by default → no fallback chain, only the
+    /// circuit breaker is active.
+    ///
+    /// Only fallbacks that resolve to the **same provider** as the primary
+    /// (a cheaper / alternate model on the same endpoint) are wired today:
+    /// they reuse the primary's resolved credentials and base URL. Entries
+    /// that name a different provider are skipped at bootstrap with a warning
+    /// — cross-provider failover needs its own credential resolution and is
+    /// reserved for a follow-up.
+    #[serde(default)]
+    pub fallback_models: Vec<String>,
 }
 
 impl Default for ProviderChainConfig {
@@ -376,6 +391,7 @@ impl Default for ProviderChainConfig {
             enabled: false,
             failure_threshold: default_failure_threshold(),
             recovery_timeout_secs: default_recovery_timeout_secs(),
+            fallback_models: Vec::new(),
         }
     }
 }
@@ -2322,7 +2338,19 @@ fn merge_config_files(global: ConfigFile, project: ConfigFile) -> ConfigFile {
             global.provider_chain
         }
     } else {
-        ProviderChainConfig::default()
+        // Neither side opted into chain reporting, but the circuit breaker
+        // (and its fallback chain) is wrapped unconditionally in bootstrap.
+        // Preserve any `fallback_models` the user set — project over global —
+        // so a fallback list works without flipping `enabled`.
+        let fallback_models = if project.provider_chain.fallback_models.is_empty() {
+            global.provider_chain.fallback_models
+        } else {
+            project.provider_chain.fallback_models
+        };
+        ProviderChainConfig {
+            fallback_models,
+            ..Default::default()
+        }
     };
 
     // W8a A.5: budget merges project-over-global field-by-field. The

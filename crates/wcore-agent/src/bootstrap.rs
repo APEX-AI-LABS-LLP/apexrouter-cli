@@ -516,10 +516,19 @@ impl AgentBootstrap {
             } else {
                 Arc::new(wcore_providers::NoOpCircuitReporter)
             };
+        // Rank 20: feed the fallback chain. Each configured `fallback_models`
+        // entry that resolves to the SAME provider as the primary (a cheaper /
+        // alternate model on the same endpoint) is built via the same
+        // `create_native_provider` path and handed to `ResilientProvider`, so
+        // the failover machinery is reachable instead of dead. Cross-provider
+        // entries (a different `<provider>:` prefix) are skipped with a warning
+        // — they need their own credential/base-url resolution (follow-up).
+        // No fallbacks configured → empty Vec, identical to prior behaviour.
+        let fallbacks = build_fallback_providers(&self.config);
         let provider: Arc<dyn LlmProvider> = Arc::new(ResilientProvider::new(
             self.config.provider_label.clone(),
             primary_provider,
-            Vec::new(),
+            fallbacks,
             cfg,
             reporter,
         ));
@@ -2640,4 +2649,57 @@ fn build_script_dispatcher_registry(
         )));
     }
     reg
+}
+
+/// Rank 20: build the fallback provider chain fed to `ResilientProvider`.
+///
+/// Each `provider_chain.fallback_models` entry is turned into a concrete
+/// `(label, Arc<dyn LlmProvider>)` by cloning the primary's `Config` with only
+/// the `model` field swapped, then routing it through the SAME
+/// `create_native_provider` path as the primary. The clone keeps the primary's
+/// resolved provider type, credentials, and base URL, so a fallback is a
+/// cheaper / alternate model on the SAME endpoint.
+///
+/// A fallback string carrying a `<provider>:<role>` short-form whose provider
+/// prefix names a DIFFERENT provider than the primary (e.g. primary
+/// `anthropic`, fallback `openai:gpt4o`) is skipped with a warning —
+/// cross-provider failover needs its own credential / base-url resolution and
+/// is reserved for a follow-up. A bare literal (no recognised prefix) or a
+/// prefix matching the primary is treated as same-provider.
+///
+/// No `fallback_models` configured → empty `Vec`, byte-for-byte the prior
+/// (circuit-breaker-only) behaviour.
+fn build_fallback_providers(config: &Config) -> Vec<(String, Arc<dyn LlmProvider>)> {
+    let primary_label = config.provider_label.as_str();
+    let mut fallbacks = Vec::new();
+    for entry in &config.provider_chain.fallback_models {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        // Detect a cross-provider short-form: a `<prefix>:<role>` whose prefix
+        // is a recognised provider name that differs from the primary's.
+        if let Some((prefix, _role)) = entry.split_once(':')
+            && wcore_types::model_aliases::known_providers().contains(&prefix)
+            && prefix != primary_label
+        {
+            tracing::warn!(
+                fallback = %entry,
+                primary = %primary_label,
+                "skipping cross-provider fallback model: only same-provider \
+                 fallbacks are wired today (needs separate credential resolution)"
+            );
+            continue;
+        }
+        // Expand a same-provider short-form to its canonical id; a bare literal
+        // flows through unchanged.
+        let model = wcore_types::model_aliases::expand_short_form(entry)
+            .map(str::to_string)
+            .unwrap_or_else(|| entry.to_string());
+        let mut fb_config = config.clone();
+        fb_config.model = model;
+        let provider = wcore_providers::create_native_provider(&fb_config);
+        fallbacks.push((entry.to_string(), provider));
+    }
+    fallbacks
 }

@@ -407,6 +407,67 @@ mod tests {
         }
     }
 
+    /// Rank 20: once the primary's circuit is Open, a configured fallback must
+    /// actually serve the request — the primary is skipped and the fallback's
+    /// `Ok` is returned. This proves the failover chain is reachable (a
+    /// non-empty `fallbacks` Vec is the contract `bootstrap` must now satisfy);
+    /// before the fix `bootstrap` always passed `Vec::new()`, so this path was
+    /// dead.
+    #[tokio::test]
+    async fn open_circuit_fails_over_to_fallback() {
+        // Primary always fails AND counts its calls, so we can assert it is
+        // skipped once the breaker opens.
+        struct CountingFail {
+            calls: AtomicUsize,
+        }
+        #[async_trait]
+        impl LlmProvider for CountingFail {
+            async fn stream(
+                &self,
+                _: &LlmRequest,
+            ) -> Result<mpsc::Receiver<LlmEvent>, ProviderError> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Err(ProviderError::Connection("primary down".into()))
+            }
+        }
+        let primary = Arc::new(CountingFail {
+            calls: AtomicUsize::new(0),
+        });
+        let fallback = Arc::new(AlwaysOk);
+        let resilient = ResilientProvider::new(
+            "primary",
+            primary.clone(),
+            vec![("fb".into(), fallback)],
+            CircuitConfig {
+                fail_threshold: 2,
+                window: Duration::from_secs(30),
+                cooldown: Duration::from_secs(60),
+            },
+            Arc::new(NoOpCircuitReporter),
+        );
+        // First two calls trip the breaker (each still falls over to the
+        // fallback and returns Ok). After the 2nd failure the circuit is Open.
+        for _ in 0..2 {
+            assert!(
+                resilient.stream(&dummy_request()).await.is_ok(),
+                "fallback must serve the request while the primary is failing"
+            );
+        }
+        let calls_after_open = primary.calls.load(Ordering::SeqCst);
+        // A subsequent call with the circuit Open must skip the primary
+        // entirely and still succeed via the fallback.
+        assert!(
+            resilient.stream(&dummy_request()).await.is_ok(),
+            "fallback must serve the request once the primary circuit is open"
+        );
+        assert_eq!(
+            primary.calls.load(Ordering::SeqCst),
+            calls_after_open,
+            "primary must NOT be called once its circuit is open — the open \
+             path must route straight to the fallback"
+        );
+    }
+
     /// E-H2: a semantic error from the primary must NOT open the breaker even
     /// after many repeats — the circuit stays Closed.
     #[tokio::test]
