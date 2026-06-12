@@ -8,7 +8,6 @@
 //! returns `true`; otherwise it dwells long and wakes on real events.
 
 use std::collections::HashMap;
-use std::time::Instant;
 
 /// Stable identity for each animated element. Subscribers register on
 /// demand and unsubscribe when their animation ends. FROZEN S0 surface
@@ -31,15 +30,11 @@ pub enum AnimId {
 }
 
 /// One subscriber's bookkeeping. `keep_alive` subscribers keep the clock
-/// ticking even between visible state changes (e.g. a blinking cursor);
-/// `last_tick` records the last advance a subscriber saw (reserved for
-/// future per-subscriber cadence — not yet read in W1).
+/// ticking even between visible state changes (e.g. a blinking cursor).
 #[derive(Debug, Clone, Copy)]
 pub struct Subscription {
     /// Keep the clock alive even when no visible state is changing.
     pub keep_alive: bool,
-    /// Instant of the last advance observed for this subscriber.
-    pub last_tick: Instant,
 }
 
 /// The single shared clock. `wants_tick()` is the idle-CPU lever: the
@@ -57,13 +52,7 @@ impl AnimationClock {
     /// wanting ticks as soon as the first subscriber registers (unless
     /// paused).
     pub fn subscribe(&mut self, id: AnimId, keep_alive: bool) {
-        self.subscribers.insert(
-            id,
-            Subscription {
-                keep_alive,
-                last_tick: Instant::now(),
-            },
-        );
+        self.subscribers.insert(id, Subscription { keep_alive });
     }
 
     /// Drop `id`'s subscription. Once the last subscriber unsubscribes,
@@ -163,6 +152,20 @@ mod tests {
         assert_eq!(c.advance(), 1);
         assert_eq!(c.advance(), 2);
         assert_eq!(c.advance(), 3);
+    }
+
+    #[test]
+    fn subscribe_records_keep_alive_flag() {
+        let mut c = AnimationClock::default();
+        c.subscribe(AnimId::CursorBlink, true);
+        c.subscribe(AnimId::Spinner, false);
+        assert!(c.subscribers[&AnimId::CursorBlink].keep_alive);
+        assert!(!c.subscribers[&AnimId::Spinner].keep_alive);
+        // Re-subscribing overwrites the prior bookkeeping.
+        c.subscribe(AnimId::CursorBlink, false);
+        assert!(!c.subscribers[&AnimId::CursorBlink].keep_alive);
+        // wants_tick is unaffected by keep_alive — any active subscriber pins it.
+        assert!(c.wants_tick());
     }
 
     #[test]
