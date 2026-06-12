@@ -328,12 +328,19 @@ pub fn build_piper_tts_backend() -> Option<Arc<dyn TtsBackend>> {
         );
         return None;
     }
+    // Synthesis is a deferred stub (`PiperTtsBackend::synthesize` always
+    // returns `DependencyMissing` until the v0.9.1 ONNX/piper-rs runtime
+    // lands). Registering a backend here would surface a `text_to_speech`
+    // tool the model can call but that ALWAYS fails. Until real synthesis
+    // exists we return `None` so B2's `build_tts_backend` falls through to
+    // its cloud chain instead. The voice-on-disk detection above stays so
+    // the v0.9.1 flip is a one-line `Some(...)` restore.
     tracing::info!(
         voice = %voice,
         dir = %voices_dir.display(),
-        "piper: voice present — Piper TTS available as free-local fallback"
+        "piper: voice present but synthesis is deferred (pending v0.9.1) — Piper TTS hidden"
     );
-    Some(Arc::new(PiperTtsBackend { voice, voices_dir }))
+    None
 }
 
 // ---------------------------------------------------------------------
@@ -790,17 +797,23 @@ mod tests {
         assert!(b.is_none(), "Piper TTS must hide when no voice on disk");
     }
 
-    // Unix-only: this positive-path test plants a voice under a redirected
-    // home via the `HOME` env var. Production resolves the voices dir through
+    // Unix-only: this test plants a voice under a redirected home via the
+    // `HOME` env var. Production resolves the voices dir through
     // `dirs::home_dir()`, which on Windows reads the OS known-folder API
     // (FOLDERID_Profile) and ignores `HOME`/`USERPROFILE` — so the redirect is
     // structurally impossible there and the planted voice can't be found. The
-    // voice-resolution code itself is platform-correct; the Windows negative
-    // path stays covered by `piper_tts_returns_none_when_no_voices_downloaded`.
+    // voice-resolution code itself is platform-correct; the Windows path stays
+    // covered by `piper_tts_returns_none_when_no_voices_downloaded`.
+    //
+    // Contract: even WITH a usable voice on disk, `build_piper_tts_backend`
+    // returns `None` because synthesis is a deferred stub — registering it
+    // would surface a `text_to_speech` tool that always fails. (Was
+    // `is_some()` while the always-erroring backend was registered; flipped
+    // when the registration was withdrawn pending v0.9.1 synthesis.)
     #[cfg(unix)]
     #[test]
     #[serial]
-    fn piper_tts_returns_some_when_voice_present() {
+    fn piper_tts_returns_none_even_when_voice_present_until_synthesis_lands() {
         let tmp = TempDir::new().unwrap();
         // Pre-populate the canonical voices dir with the default voice.
         let voices = tmp.path().join(".wayland").join("piper-voices");
@@ -809,6 +822,12 @@ mod tests {
         let onnx = voices.join(format!("{DEFAULT_PIPER_VOICE}.onnx"));
         let mut f = std::fs::File::create(&onnx).unwrap();
         f.write_all(&big_voice_bytes()).unwrap();
+        // Sanity-check the voice IS discoverable on disk, so this test
+        // exercises the post-discovery `None` (not the no-voice path).
+        assert!(
+            is_voice_cached(DEFAULT_PIPER_VOICE, &voices),
+            "test setup: planted voice must be detected as cached"
+        );
 
         let prev_home = std::env::var_os("HOME");
         // SAFETY: env mutation guarded by #[serial].
@@ -823,7 +842,11 @@ mod tests {
                 None => std::env::remove_var("HOME"),
             }
         }
-        assert!(b.is_some(), "Piper TTS must surface when voice cached");
+        assert!(
+            b.is_none(),
+            "Piper TTS must stay hidden even with a voice cached — synthesis \
+             is a deferred stub; registering it would surface an always-failing tool"
+        );
     }
 
     #[test]
