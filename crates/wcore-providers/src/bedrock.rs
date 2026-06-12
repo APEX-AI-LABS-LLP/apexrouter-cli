@@ -396,9 +396,7 @@ impl BedrockProvider {
             });
         }
 
-        let raw = response.text().await.map_err(|e| {
-            ProviderError::Connection(format!("Bedrock response read error: {}", e))
-        })?;
+        let raw = read_buffered_body_capped(response).await?;
         dump_response_chunk(&self.debug, &raw);
 
         let events = decode_buffered_response(family, &raw)?;
@@ -417,6 +415,53 @@ impl BedrockProvider {
 
         Ok(rx)
     }
+}
+
+/// Maximum size a buffered Bedrock `invoke` response body may reach before the
+/// reader gives up. The Mistral/Cohere buffered paths read the whole HTTP body
+/// into memory; without a cap a hostile or misbehaving endpoint could stream an
+/// unbounded body and OOM the process. 16 MiB comfortably exceeds any
+/// legitimate buffered Bedrock JSON response while bounding worst-case memory.
+const MAX_BUFFERED_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Read a buffered Bedrock `invoke` HTTP response body into a `String`,
+/// enforcing [`MAX_BUFFERED_RESPONSE_BYTES`] as a running cap.
+///
+/// Unlike a bare `response.text()` (which buffers the entire body with no
+/// bound), this accumulates `bytes_stream()` chunks and fails fast once the cap
+/// is exceeded — mirroring the streaming buffer-cap pattern used by the native
+/// AWS event-stream path (`process_aws_event_stream`).
+async fn read_buffered_body_capped(response: reqwest::Response) -> Result<String, ProviderError> {
+    use futures::StreamExt;
+
+    let mut stream = response.bytes_stream();
+    let mut buffer: Vec<u8> = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| {
+            ProviderError::Connection(format!("Bedrock response read error: {}", e))
+        })?;
+        accumulate_capped(&mut buffer, &chunk)?;
+    }
+    decode_buffered_body(buffer)
+}
+
+/// Append `chunk` to `buffer`, returning a typed error if the running total
+/// would exceed [`MAX_BUFFERED_RESPONSE_BYTES`]. Extracted from the streaming
+/// reader so the cap logic is unit-testable without a live HTTP server.
+fn accumulate_capped(buffer: &mut Vec<u8>, chunk: &[u8]) -> Result<(), ProviderError> {
+    if buffer.len().saturating_add(chunk.len()) > MAX_BUFFERED_RESPONSE_BYTES {
+        return Err(ProviderError::Parse(format!(
+            "Bedrock buffered response exceeded {MAX_BUFFERED_RESPONSE_BYTES} bytes"
+        )));
+    }
+    buffer.extend_from_slice(chunk);
+    Ok(())
+}
+
+/// UTF-8 decode a fully-buffered (already capped) response body.
+fn decode_buffered_body(buffer: Vec<u8>) -> Result<String, ProviderError> {
+    String::from_utf8(buffer)
+        .map_err(|e| ProviderError::Connection(format!("Bedrock response not valid UTF-8: {}", e)))
 }
 
 /// Decode a buffered Bedrock `invoke` JSON response into the engine's
@@ -1306,6 +1351,52 @@ mod tests {
         buf.extend_from_slice(&[0u8; 16]); // pad to total_len so length guard passes
         let err = parse_aws_event(&buf).expect_err("oversized headers_len must be rejected");
         assert!(matches!(err, ProviderError::Parse(_)), "got {err:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Buffered-response byte cap (Mistral/Cohere `invoke` paths)
+    // -----------------------------------------------------------------------
+
+    /// Accumulating chunks whose running total stays under the cap succeeds and
+    /// the buffer decodes to the concatenated UTF-8 body.
+    #[test]
+    fn buffered_body_under_cap_decodes() {
+        let mut buffer = Vec::new();
+        accumulate_capped(&mut buffer, b"{\"text\":").expect("first chunk under cap");
+        accumulate_capped(&mut buffer, b"\"hi\"}").expect("second chunk under cap");
+        let body = decode_buffered_body(buffer).expect("valid UTF-8");
+        assert_eq!(body, r#"{"text":"hi"}"#);
+    }
+
+    /// A chunk that pushes the running total over the cap is rejected with a
+    /// typed `Parse` error naming the cap, instead of growing without bound.
+    #[test]
+    fn buffered_body_over_cap_is_rejected() {
+        let mut buffer = Vec::new();
+        // First fill just under the cap, then a small chunk tips it over.
+        let near = vec![b'a'; MAX_BUFFERED_RESPONSE_BYTES - 1];
+        accumulate_capped(&mut buffer, &near).expect("under cap");
+        let err = accumulate_capped(&mut buffer, b"bb").expect_err("over cap must be rejected");
+        match err {
+            ProviderError::Parse(msg) => assert!(
+                msg.contains(&MAX_BUFFERED_RESPONSE_BYTES.to_string()),
+                "error should name the cap, got: {msg}"
+            ),
+            other => panic!("expected Parse error, got {other:?}"),
+        }
+        // The buffer must not have absorbed the rejected chunk.
+        assert_eq!(buffer.len(), MAX_BUFFERED_RESPONSE_BYTES - 1);
+    }
+
+    /// A single oversized chunk (larger than the cap on its own) is rejected.
+    #[test]
+    fn buffered_body_single_oversized_chunk_rejected() {
+        let mut buffer = Vec::new();
+        let huge = vec![b'x'; MAX_BUFFERED_RESPONSE_BYTES + 1];
+        assert!(matches!(
+            accumulate_capped(&mut buffer, &huge),
+            Err(ProviderError::Parse(_))
+        ));
     }
 
     /// A malformed frame surfaced through the full stream loop must reach the
