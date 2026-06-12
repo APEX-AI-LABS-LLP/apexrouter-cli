@@ -15,7 +15,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader};
 use tokio::process::Command;
 use tokio::sync::{Mutex, oneshot, watch};
 
-use wcore_channels::event::{ChannelEvent, ChatType, IncomingMessage};
+use wcore_channels::event::{Attachment, ChannelEvent, ChatType, IncomingMessage, MediaKind};
 
 use crate::error::SignalError;
 use crate::jsonrpc::{Frame, ReceiveParams};
@@ -224,6 +224,36 @@ async fn dispatch_line(
     }
 }
 
+/// Coarse [`MediaKind`] from a signal-cli MIME type.
+fn media_kind_from_content_type(ct: Option<&str>) -> MediaKind {
+    match ct {
+        Some(c) if c.starts_with("image/") => MediaKind::Image,
+        Some(c) if c.starts_with("video/") => MediaKind::Video,
+        Some(c) if c.starts_with("audio/") => MediaKind::Audio,
+        Some("application/pdf") => MediaKind::Document,
+        _ => MediaKind::Other,
+    }
+}
+
+/// Build inbound [`Attachment`]s from signal-cli attachment metadata. Only
+/// entries with an `id` (the on-disk store filename) are surfaced; the `id`
+/// rides in `Attachment.path` and `fetch_media` resolves it against the
+/// configured attachments dir. No URL — the bytes are already local.
+fn build_attachments(atts: &[crate::jsonrpc::SignalAttachment]) -> Vec<Attachment> {
+    atts.iter()
+        .filter_map(|a| {
+            let id = a.id.clone()?;
+            Some(Attachment {
+                url: String::new(),
+                path: Some(id),
+                content_type: a.content_type.clone(),
+                kind: media_kind_from_content_type(a.content_type.as_deref()),
+                transcribed: None,
+            })
+        })
+        .collect()
+}
+
 /// Build an `IncomingMessage` from a parsed `receive` envelope.
 /// Returns `None` for envelopes that don't carry a data message
 /// (sync / receipt / typing events), so they're silently dropped.
@@ -231,7 +261,10 @@ fn build_incoming(parsed: &ReceiveParams) -> Option<IncomingMessage> {
     let envelope = &parsed.envelope;
     let data = envelope.data_message.as_ref()?;
     let text = data.message.clone().unwrap_or_default();
-    if text.is_empty() && data.group_info.is_none() {
+    // Surface attachments even when they arrive with no caption (a photo with
+    // no text), so a pure-media message isn't dropped as a "receipt".
+    let attachments = build_attachments(&data.attachments);
+    if text.is_empty() && data.group_info.is_none() && attachments.is_empty() {
         // Empty receipt-style envelope — nothing useful to surface.
         return None;
     }
@@ -305,10 +338,10 @@ fn build_incoming(parsed: &ReceiveParams) -> Option<IncomingMessage> {
         author,
         text,
         ts_secs,
-        // attachments: signal-cli's JSON-RPC `receive` notification does
-        // not surface attachment references in the current ReceiveParams
-        // schema; leave empty until the struct gains an attachments field.
-        attachments: Vec::new(),
+        // Attachments carry the signal-cli store `id` in `path`; the full
+        // on-disk path is resolved lazily in `fetch_media` (it needs the
+        // connector's configured attachments dir). No URL — bytes are local.
+        attachments,
         sender_id,
         sender_display,
         sender_handle,
@@ -338,4 +371,52 @@ fn build_incoming(parsed: &ReceiveParams) -> Option<IncomingMessage> {
         reply_to_message_id: None,
         reply_to_text: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jsonrpc::SignalAttachment;
+
+    fn att(id: Option<&str>, ct: Option<&str>) -> SignalAttachment {
+        SignalAttachment {
+            id: id.map(str::to_string),
+            content_type: ct.map(str::to_string),
+            filename: None,
+        }
+    }
+
+    #[test]
+    fn build_attachments_carries_id_and_kind() {
+        let atts = build_attachments(&[att(Some("abc.jpg"), Some("image/jpeg"))]);
+        assert_eq!(atts.len(), 1);
+        // The signal-cli store id rides in `path`; no URL (bytes are local).
+        assert_eq!(atts[0].path.as_deref(), Some("abc.jpg"));
+        assert!(atts[0].url.is_empty());
+        assert_eq!(atts[0].kind, MediaKind::Image);
+    }
+
+    #[test]
+    fn build_attachments_skips_entries_without_id() {
+        // An attachment with no store id can't be fetched — drop it.
+        let atts = build_attachments(&[att(None, Some("image/png"))]);
+        assert!(atts.is_empty());
+    }
+
+    #[test]
+    fn media_kind_classifies_by_mime() {
+        assert_eq!(
+            media_kind_from_content_type(Some("video/mp4")),
+            MediaKind::Video
+        );
+        assert_eq!(
+            media_kind_from_content_type(Some("audio/aac")),
+            MediaKind::Audio
+        );
+        assert_eq!(
+            media_kind_from_content_type(Some("application/pdf")),
+            MediaKind::Document
+        );
+        assert_eq!(media_kind_from_content_type(None), MediaKind::Other);
+    }
 }

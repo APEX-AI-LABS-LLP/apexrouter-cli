@@ -100,6 +100,25 @@ pub struct DataMessage {
     /// envelope's value when both are present.
     #[serde(default)]
     pub timestamp: Option<i64>,
+    /// Inbound attachments. signal-cli writes each to disk under
+    /// `<config-dir>/attachments/<id>` and reports its metadata here.
+    #[serde(default)]
+    pub attachments: Vec<SignalAttachment>,
+}
+
+/// One inbound Signal attachment as reported by signal-cli's `receive`
+/// notification. The `id` is the on-disk filename under the attachments dir.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SignalAttachment {
+    /// Local store id == filename under `<config-dir>/attachments/`.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// MIME type signal-cli reported, if any.
+    #[serde(default, rename = "contentType")]
+    pub content_type: Option<String>,
+    /// Original sender-supplied filename, if any.
+    #[serde(default)]
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

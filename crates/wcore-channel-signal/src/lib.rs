@@ -110,6 +110,11 @@ impl SignalChannel {
     }
 }
 
+/// Cap on a single inbound attachment read. signal-cli has already written the
+/// bytes to local disk; bound the read so an oversized file can't exhaust
+/// memory.
+const MAX_ATTACHMENT_BYTES: u64 = 64 * 1024 * 1024;
+
 #[async_trait]
 impl Channel for SignalChannel {
     fn name(&self) -> &str {
@@ -327,6 +332,44 @@ impl Channel for SignalChannel {
     fn config_schema(&self) -> &str {
         include_str!("schemas/signal.json")
     }
+
+    /// Read an inbound Signal attachment's bytes off local disk. signal-cli
+    /// writes each attachment to `<config-dir>/attachments/<id>`; the `id`
+    /// rides in `Attachment.path`. No network fetch, so no SSRF surface —
+    /// bounded by [`MAX_ATTACHMENT_BYTES`].
+    async fn fetch_media(
+        &self,
+        attachment: &wcore_channels::event::Attachment,
+    ) -> Result<Vec<u8>, ChannelError> {
+        let Some(id) = attachment.path.as_deref() else {
+            return Err(ChannelError::Rejected(
+                "signal attachment has no store id".to_string(),
+            ));
+        };
+        // Defense in depth: a signal-cli store id is a flat filename. Reject
+        // any separator / parent ref so a crafted id can't escape the dir.
+        if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
+            return Err(ChannelError::Rejected(format!(
+                "invalid signal attachment id: {id}"
+            )));
+        }
+        let path = self.config.resolve_attachments_dir().join(id);
+
+        tokio::task::spawn_blocking(move || {
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| ChannelError::Transport(format!("stat signal attachment: {e}")))?;
+            if meta.len() > MAX_ATTACHMENT_BYTES {
+                return Err(ChannelError::Rejected(format!(
+                    "signal attachment exceeds {MAX_ATTACHMENT_BYTES} byte cap ({})",
+                    meta.len()
+                )));
+            }
+            std::fs::read(&path)
+                .map_err(|e| ChannelError::Transport(format!("read signal attachment: {e}")))
+        })
+        .await
+        .map_err(|e| ChannelError::Transport(format!("attachment read task panic: {e}")))?
+    }
 }
 
 fn now_ms() -> i64 {
@@ -353,7 +396,49 @@ mod tests {
             signal_cli_path: PathBuf::from("signal-cli"),
             account: "+15551234567".to_string(),
             send_timeout_secs: 10,
+            attachments_dir: None,
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_media_reads_local_attachment_by_id() {
+        let dir = std::env::temp_dir().join("wcore_signal_fetch_media_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("att-id-1"), b"SIGBYTES").unwrap();
+
+        let mut config = cfg();
+        config.attachments_dir = Some(dir.clone());
+        let ch = SignalChannel::new("t", config);
+
+        let att = wcore_channels::event::Attachment {
+            path: Some("att-id-1".to_string()),
+            ..Default::default()
+        };
+        let bytes = ch.fetch_media(&att).await.unwrap();
+        assert_eq!(bytes, b"SIGBYTES");
+
+        let _ = std::fs::remove_file(dir.join("att-id-1"));
+    }
+
+    #[tokio::test]
+    async fn fetch_media_rejects_traversal_id() {
+        let ch = SignalChannel::new("t", cfg());
+        let att = wcore_channels::event::Attachment {
+            path: Some("../../etc/passwd".to_string()),
+            ..Default::default()
+        };
+        let err = ch.fetch_media(&att).await.unwrap_err();
+        assert!(matches!(err, ChannelError::Rejected(_)));
+    }
+
+    #[tokio::test]
+    async fn fetch_media_rejects_missing_id() {
+        let ch = SignalChannel::new("t", cfg());
+        let err = ch
+            .fetch_media(&wcore_channels::event::Attachment::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ChannelError::Rejected(_)));
     }
 
     /// Test-side failure-injection knob. Wrapped in an Arc so the
