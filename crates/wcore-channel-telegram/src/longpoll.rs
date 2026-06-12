@@ -152,6 +152,35 @@ fn pending_media(msg: &crate::api::Message) -> Vec<PendingMedia> {
                 .or_else(|| Some("video/mp4".to_string())),
         });
     }
+    if let Some(ref a) = msg.audio {
+        out.push(PendingMedia {
+            file_id: a.file_id.clone(),
+            kind: MediaKind::Audio,
+            // Audio files are commonly MP3; fall back when unreported.
+            content_type: a
+                .mime_type
+                .clone()
+                .or_else(|| Some("audio/mpeg".to_string())),
+        });
+    }
+    if let Some(ref s) = msg.sticker {
+        out.push(PendingMedia {
+            file_id: s.file_id.clone(),
+            // Stickers are surfaced as images so the agent sees them
+            // rather than a blank message.
+            kind: MediaKind::Image,
+            // Static stickers are WebP; carry no reported mime.
+            content_type: Some("image/webp".to_string()),
+        });
+    }
+    if let Some(ref vn) = msg.video_note {
+        out.push(PendingMedia {
+            file_id: vn.file_id.clone(),
+            kind: MediaKind::Video,
+            // Round video messages are always MPEG-4.
+            content_type: Some("video/mp4".to_string()),
+        });
+    }
     out
 }
 
@@ -391,6 +420,50 @@ mod tests {
     fn pending_media_empty_for_text_only_message() {
         let msg = message_from_json(r#"{"message_id":1,"chat":{"id":1},"text":"hello"}"#);
         assert!(pending_media(&msg).is_empty());
+    }
+
+    #[test]
+    fn pending_media_maps_audio_to_audio() {
+        // Audio with an explicit mime keeps it; without one falls back to
+        // audio/mpeg. Previously audio was silently dropped → blank message.
+        let with_mime = message_from_json(
+            r#"{"message_id":1,"chat":{"id":1},"audio":{"file_id":"a","mime_type":"audio/flac"}}"#,
+        );
+        let p = pending_media(&with_mime);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].file_id, "a");
+        assert_eq!(p[0].kind, MediaKind::Audio);
+        assert_eq!(p[0].content_type.as_deref(), Some("audio/flac"));
+
+        let no_mime =
+            message_from_json(r#"{"message_id":1,"chat":{"id":1},"audio":{"file_id":"a"}}"#);
+        let p = pending_media(&no_mime);
+        assert_eq!(p[0].content_type.as_deref(), Some("audio/mpeg"));
+    }
+
+    #[test]
+    fn pending_media_maps_sticker_to_image() {
+        // Stickers carry no mime and were previously dropped; surface as an
+        // image (image/webp) so the agent sees it.
+        let msg =
+            message_from_json(r#"{"message_id":1,"chat":{"id":1},"sticker":{"file_id":"s"}}"#);
+        let p = pending_media(&msg);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].file_id, "s");
+        assert_eq!(p[0].kind, MediaKind::Image);
+        assert_eq!(p[0].content_type.as_deref(), Some("image/webp"));
+    }
+
+    #[test]
+    fn pending_media_maps_video_note_to_video() {
+        // Round video messages were previously dropped; surface as a video.
+        let msg =
+            message_from_json(r#"{"message_id":1,"chat":{"id":1},"video_note":{"file_id":"vn"}}"#);
+        let p = pending_media(&msg);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].file_id, "vn");
+        assert_eq!(p[0].kind, MediaKind::Video);
+        assert_eq!(p[0].content_type.as_deref(), Some("video/mp4"));
     }
 
     #[tokio::test]

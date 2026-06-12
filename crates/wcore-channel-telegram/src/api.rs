@@ -77,6 +77,16 @@ pub struct Message {
     /// Video attachment.
     #[serde(default)]
     pub video: Option<Video>,
+    /// Audio (music / non-voice audio file) attachment.
+    #[serde(default)]
+    pub audio: Option<Audio>,
+    /// Sticker — modeled as an image so the agent sees it rather than a
+    /// blank message.
+    #[serde(default)]
+    pub sticker: Option<Sticker>,
+    /// Round video message (`video_note`) — modeled as a video.
+    #[serde(default)]
+    pub video_note: Option<VideoNote>,
     /// Text entities (mentions, bot_commands, …).
     #[serde(default)]
     pub entities: Option<Vec<MessageEntity>>,
@@ -110,6 +120,29 @@ pub struct Video {
     pub file_id: String,
     #[serde(default)]
     pub mime_type: Option<String>,
+}
+
+/// Telegram `Audio` (music / non-voice audio file).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Audio {
+    pub file_id: String,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+}
+
+/// Telegram `Sticker`. Stickers carry no `mime_type`; static stickers are
+/// WebP and animated/video stickers are WebM, so the field→mime mapping is
+/// synthesized at the call site.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Sticker {
+    pub file_id: String,
+}
+
+/// Telegram `VideoNote` (round video message). Always MPEG-4; carries no
+/// `mime_type` field.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VideoNote {
+    pub file_id: String,
 }
 
 /// Telegram `MessageEntity` — text annotations (mentions, commands, …).
@@ -379,6 +412,15 @@ pub(crate) async fn get_updates(
         .query(&[
             ("offset", offset_str.as_str()),
             ("timeout", timeout_str.as_str()),
+            // Pin the update contract. Without an explicit allowed_updates the
+            // bot inherits whatever filter was last set on the token (possibly
+            // by a prior framework), so this adapter could be starved of the
+            // very kinds it handles. List exactly the kinds ingest_updates
+            // consumes — message / channel_post / edited_message.
+            (
+                "allowed_updates",
+                r#"["message","channel_post","edited_message"]"#,
+            ),
         ])
         // HTTP read timeout = long-poll wait + buffer. If timeout_secs
         // is 0 we still allow a short upper bound so we don't hang
@@ -777,5 +819,30 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn get_updates_pins_allowed_updates_filter() {
+        // The query must carry an explicit allowed_updates so the adapter
+        // doesn't inherit a stale filter set on the token by a prior
+        // framework. The mock only matches when allowed_updates is present
+        // with the exact contract value, so a missing/wrong filter fails it.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/bot1:tok/getUpdates")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "allowed_updates".into(),
+                r#"["message","channel_post","edited_message"]"#.into(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"ok":true,"result":[]}"#)
+            .create_async()
+            .await;
+        let http = wcore_egress::EgressClient::new();
+        let updates = get_updates(&http, &server.url(), "1:tok", 0, 0)
+            .await
+            .expect("getUpdates succeeds");
+        assert!(updates.is_empty());
+        mock.assert_async().await;
     }
 }
