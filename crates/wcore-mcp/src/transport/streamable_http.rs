@@ -184,10 +184,10 @@ impl StreamableHttpTransport {
                 }
 
                 let data = data_lines.join("\n");
-                if !data.is_empty()
-                    && let Ok(rpc_response) = serde_json::from_str::<JsonRpcResponse>(&data)
-                {
-                    return Ok(rpc_response);
+                match classify_sse_frame(&data) {
+                    SseFrame::Empty | SseFrame::Skip => continue,
+                    SseFrame::Response(rpc_response) => return Ok(*rpc_response),
+                    SseFrame::Error(err) => return Err(err),
                 }
             }
         }
@@ -196,6 +196,56 @@ impl StreamableHttpTransport {
             "SSE stream ended without JSON-RPC response".into(),
         ))
     }
+}
+
+/// Classification of a single SSE `data:` frame's payload.
+enum SseFrame {
+    /// The frame carried no `data:` payload.
+    Empty,
+    /// A well-formed JSON-RPC response (result or error with an `id`).
+    Response(Box<JsonRpcResponse>),
+    /// A JSON-RPC error frame WITHOUT a usable `id` — surfaced structurally
+    /// instead of being discarded.
+    Error(McpError),
+    /// Non-empty but neither a response nor an error frame; logged and skipped.
+    Skip,
+}
+
+/// Classify a single SSE data payload.
+///
+/// mcp-86 — some servers emit an error frame WITHOUT an `id` (and occasionally
+/// without the `jsonrpc` field), which fails to deserialize into the
+/// strongly-typed `JsonRpcResponse`. Such a frame is surfaced as a structured
+/// [`McpError::JsonRpc`] rather than silently discarded, so the caller sees the
+/// server's error payload instead of the opaque "stream ended" error. Any other
+/// non-empty frame that does not parse as a JSON-RPC response is logged at warn
+/// level rather than dropped without a trace.
+fn classify_sse_frame(data: &str) -> SseFrame {
+    if data.is_empty() {
+        return SseFrame::Empty;
+    }
+
+    // Happy path: a well-formed JSON-RPC response (result or error, with id).
+    if let Ok(rpc_response) = serde_json::from_str::<JsonRpcResponse>(data) {
+        return SseFrame::Response(Box::new(rpc_response));
+    }
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(data) {
+        if let Some(err) = value.get("error").filter(|e| e.is_object()) {
+            let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+            let message = err
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown JSON-RPC error")
+                .to_string();
+            return SseFrame::Error(McpError::JsonRpc { code, message });
+        }
+        tracing::warn!(frame = %data, "discarding non-JSON-RPC SSE data frame");
+    } else {
+        tracing::warn!(frame = %data, "discarding unparseable SSE data frame");
+    }
+
+    SseFrame::Skip
 }
 
 #[async_trait]
@@ -278,5 +328,47 @@ mod tests {
         assert!(
             err.to_string().contains("private or internal") || err.to_string().contains("SSRF")
         );
+    }
+
+    /// mcp-86 — an SSE error frame WITHOUT an `id` (and without `jsonrpc`) must
+    /// surface as a structured `McpError::JsonRpc` carrying the server's code
+    /// and message, NOT be discarded into the opaque stream-ended error.
+    #[test]
+    fn idless_error_frame_surfaces_structured_jsonrpc_error() {
+        let frame = r#"{"error":{"code":-32601,"message":"Method not found"}}"#;
+        match classify_sse_frame(frame) {
+            SseFrame::Error(McpError::JsonRpc { code, message }) => {
+                assert_eq!(code, -32601);
+                assert_eq!(message, "Method not found");
+            }
+            other => panic!(
+                "expected structured JsonRpc error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    /// A complete JSON-RPC response frame is returned as-is (happy path).
+    #[test]
+    fn wellformed_response_frame_is_returned() {
+        let frame = r#"{"jsonrpc":"2.0","id":1,"result":{"ok":true}}"#;
+        match classify_sse_frame(frame) {
+            SseFrame::Response(resp) => {
+                assert_eq!(resp.id, Some(1));
+                assert!(resp.error.is_none());
+            }
+            other => panic!(
+                "expected a response frame, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    /// A non-empty frame that is neither a JSON-RPC response nor an error frame
+    /// is skipped (and warn-logged) rather than treated as a response.
+    #[test]
+    fn unrelated_json_frame_is_skipped() {
+        let frame = r#"{"notification":"progress"}"#;
+        assert!(matches!(classify_sse_frame(frame), SseFrame::Skip));
     }
 }
