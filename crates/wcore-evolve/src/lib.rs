@@ -27,4 +27,7 @@ pub use evolve::{
     TraceSink, evolve,
 };
 pub use prompt_store::{EvolvedPrompt, PromptStore};
-pub use schema_reward::{SchemaRewardScore, ToolCallObservation, ToolCallSchemaReward};
+pub use schema_reward::{
+    SchemaRewardScore, ToolCallObservation, ToolCallSchemaReward, blend_into_combined,
+    observations_from_trace,
+};

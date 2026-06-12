@@ -15,15 +15,37 @@
 //! can consume it uniformly. Default weights are `0.5 / 0.25 / 0.25` for
 //! structure / type / non-redundancy respectively.
 //!
-//! ## Integration note
+//! ## Integration into the GEPA child selector
 //!
-//! `wcore-eval` exposes a `Scorer` trait, but its surface is the prompt-output
-//! pair flowing through the eval harness — not arbitrary tool-call sequences.
-//! Per the T2-A3 spec we expose [`ToolCallSchemaReward::score`] as an inherent
-//! method plus a free [`score`] helper; wiring this into the GEPA child
-//! selector is a later wave's responsibility.
+//! `wcore-eval`'s `Scorer` consumes a `Candidate` (skill body + an optional
+//! [`wcore_observability::trace::TurnTrace`]) and yields a `combined` score in
+//! `[0, 1]`; the GEPA loop retains a child when its `combined` beats both the
+//! running best and the parent. This reward signal feeds that decision through
+//! two pieces of production glue defined here:
+//!
+//! - [`ToolCallSchemaReward::score_trace`] reads the `tool_calls` off a real
+//!   `TurnTrace` (the same type the loop threads through
+//!   `wcore_eval::Candidate::trace`) and scores them — no synthetic stand-in.
+//! - [`blend_into_combined`] folds that reward into a candidate's `combined`
+//!   score so a child that emits well-formed, non-redundant tool calls is
+//!   preferred over one with the same eval outcome but sloppier tool usage.
+//!
+//! ### Deferral (honest, not faked)
+//!
+//! The fold only changes a child's score when a `TurnTrace` is actually
+//! present. Today the loop scores *mutated-but-unexecuted* skill bodies, so
+//! `generation::Generation::run` passes `Candidate::trace = None` and there are
+//! no tool calls to score — [`blend_into_combined`] is then an identity
+//! pass-through. The reward becomes live the moment GEPA children are
+//! **executed** to populate `Candidate::trace` (the "execute-children" milestone
+//! tracked for W10C): `Generation::run` would attach the child's `TurnTrace`,
+//! `evolve()` would call [`blend_into_combined`] before the retention compare,
+//! and this signal would shift which child wins. The bridge below is the real,
+//! tested half of that wiring; only the trace-population call site is deferred.
 
 use std::collections::{HashMap, HashSet};
+
+use wcore_observability::trace::TurnTrace;
 
 /// One observed tool invocation produced by a candidate prompt during
 /// generation.
@@ -181,6 +203,48 @@ impl ToolCallSchemaReward {
             non_redundancy,
         }
     }
+
+    /// Score the tool calls recorded on a real [`TurnTrace`].
+    ///
+    /// This is the production entry point used by the GEPA child selector: the
+    /// loop threads a child's `TurnTrace` through `wcore_eval::Candidate::trace`,
+    /// and this method scores its `tool_calls` directly off the trace — no
+    /// synthetic observations. A trace with no tool calls returns the all-zero
+    /// score (same contract as [`Self::score`] on an empty slice).
+    pub fn score_trace(&self, trace: &TurnTrace) -> SchemaRewardScore {
+        self.score(&observations_from_trace(trace))
+    }
+}
+
+/// Convert a [`TurnTrace`]'s recorded tool calls into the observation slice the
+/// reward scorer consumes. `result_ok` is derived from the absence of a
+/// recorded `error` (the trace's only success signal at this layer).
+pub fn observations_from_trace(trace: &TurnTrace) -> Vec<ToolCallObservation> {
+    trace
+        .tool_calls
+        .iter()
+        .map(|tc| ToolCallObservation {
+            tool_name: tc.tool_name.clone(),
+            args: tc.input.clone(),
+            result_ok: tc.error.is_none(),
+        })
+        .collect()
+}
+
+/// Fold a schema-reward score into a candidate's eval `combined` score so the
+/// GEPA selector prefers children with cleaner tool usage.
+///
+/// `combined` is the `wcore_eval` blended score in `[0, 1]`; `weight` is the
+/// share given to the schema reward. The result is the convex blend
+/// `(1 - weight) * combined + weight * reward.total`, re-clamped to `[0, 1]`.
+///
+/// `weight == 0.0` is the identity pass-through used while children are scored
+/// unexecuted (no `TurnTrace`, so no tool calls to reward — see the module-level
+/// deferral note). A non-zero weight is what makes this reward actually move a
+/// child's rank once children are executed.
+pub fn blend_into_combined(combined: f64, reward: &SchemaRewardScore, weight: f64) -> f64 {
+    let weight = weight.clamp(0.0, 1.0);
+    ((1.0 - weight) * combined + weight * reward.total as f64).clamp(0.0, 1.0)
 }
 
 /// Free-function convenience wrapper — equivalent to
@@ -372,5 +436,107 @@ mod tests {
         let a = reward.score(&calls);
         let b = score(&reward, &calls);
         assert_eq!(a, b);
+    }
+
+    /// Build a `TurnTrace` carrying the given `(tool_name, input, error)` tool
+    /// calls so we can exercise the production trace bridge.
+    fn trace_with(calls: &[(&str, serde_json::Value, Option<&str>)]) -> TurnTrace {
+        let tool_calls = calls
+            .iter()
+            .enumerate()
+            .map(|(i, (name, input, err))| {
+                let mut tc = wcore_observability::trace::ToolCallTrace::new(
+                    format!("call-{i}"),
+                    (*name).to_string(),
+                    input.clone(),
+                );
+                tc.error = err.map(|e| e.to_string());
+                tc
+            })
+            .collect();
+        TurnTrace {
+            turn: 0,
+            model: "stub".into(),
+            provider: "stub".into(),
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read: 0,
+            cache_write: 0,
+            cache_hit_rate: 0.0,
+            cost_usd: 0.0,
+            tool_calls,
+            hook_actions: vec![],
+            source_product: "test".into(),
+        }
+    }
+
+    #[test]
+    fn score_trace_reads_tool_calls_off_real_turn_trace() {
+        let reward = ToolCallSchemaReward::new(schema(&[("Read", &["path"])]));
+        let trace = trace_with(&[
+            ("Read", json!({"path": "a.rs"}), None),
+            ("Unknown", json!({"x": 1}), None),
+        ]);
+        // Identical to scoring the equivalent observation slice directly: one
+        // matched of two total → structure_match 0.5.
+        let s = reward.score_trace(&trace);
+        assert!((s.structure_match - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn observations_from_trace_maps_error_to_result_ok() {
+        let trace = trace_with(&[
+            ("Read", json!({"path": "a.rs"}), None),
+            ("Bash", json!({"command": "boom"}), Some("non-zero exit")),
+        ]);
+        let obs = observations_from_trace(&trace);
+        assert_eq!(obs.len(), 2);
+        // `.first()`/`.get()` instead of indexing — this crate denies
+        // `clippy::indexing_slicing` (and unwrap/expect/panic) crate-wide.
+        assert_eq!(obs.first().map(|o| o.result_ok), Some(true));
+        let second = obs.get(1);
+        assert_eq!(second.map(|o| o.result_ok), Some(false));
+        assert_eq!(second.map(|o| o.tool_name.as_str()), Some("Bash"));
+        assert_eq!(second.map(|o| &o.args), Some(&json!({"command": "boom"})));
+    }
+
+    #[test]
+    fn blend_into_combined_reward_shifts_candidate_score() {
+        let reward = ToolCallSchemaReward::new(schema(&[("Read", &["path"])]));
+        // Two children tie on the eval combined score, but one emits a clean,
+        // schema-matching tool call and the other emits a malformed one.
+        let clean = reward.score_trace(&trace_with(&[("Read", json!({"path": "a.rs"}), None)]));
+        let sloppy = reward.score_trace(&trace_with(&[("Read", json!({"nope": 1}), None)]));
+
+        let base = 0.6_f64;
+        let weight = 0.3_f64;
+        let clean_blended = blend_into_combined(base, &clean, weight);
+        let sloppy_blended = blend_into_combined(base, &sloppy, weight);
+
+        // The reward must actually move the score: clean tool usage now
+        // outranks sloppy usage that scored identically on the eval axis.
+        assert!(clean_blended > sloppy_blended);
+        assert!(clean_blended > base, "positive reward must lift the score");
+        assert!(
+            sloppy_blended < base,
+            "zero reward must penalize relative to base"
+        );
+    }
+
+    #[test]
+    fn blend_into_combined_zero_weight_is_identity() {
+        let reward = ToolCallSchemaReward::new(schema(&[("Read", &["path"])]));
+        let s = reward.score_trace(&trace_with(&[("Read", json!({"path": "a.rs"}), None)]));
+        // Identity pass-through used while children are scored unexecuted.
+        assert!((blend_into_combined(0.42, &s, 0.0) - 0.42).abs() < 1e-12);
+    }
+
+    #[test]
+    fn blend_into_combined_clamps_to_unit_interval() {
+        let reward = ToolCallSchemaReward::new(schema(&[("Read", &["path"])]));
+        let perfect = reward.score_trace(&trace_with(&[("Read", json!({"path": "a.rs"}), None)]));
+        // Over-unit base + over-unit weight still clamps into [0, 1].
+        let blended = blend_into_combined(1.5, &perfect, 2.0);
+        assert!((0.0..=1.0).contains(&blended));
     }
 }
