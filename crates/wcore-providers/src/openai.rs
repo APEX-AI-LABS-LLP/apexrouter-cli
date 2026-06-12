@@ -295,7 +295,7 @@ impl OpenAIProvider {
                         "function": {
                             "name": t.name,
                             "description": t.description,
-                            "parameters": t.input_schema
+                            "parameters": normalize_tool_parameters(&t.input_schema)
                         }
                     })
                 }
@@ -429,6 +429,33 @@ fn strip_patterns_from_text(text: &str, compat: &ProviderCompat) -> String {
         }
         _ => text.to_string(),
     }
+}
+
+/// Normalize a tool's input schema into a `function.parameters` object that
+/// strict OpenAI-compatible servers accept.
+///
+/// Lenient backends (OpenAI, most clouds) tolerate a bare `{"type":"object"}`,
+/// but strict local servers such as LM Studio reject any `function.parameters`
+/// that lacks a `properties` object (HTTP 400). Built-in tools and MCP-provided
+/// tools that declare no structured arguments emit exactly that bare schema, so
+/// guarantee the three fields the JSON-Schema function-calling contract wants:
+/// `type: "object"`, a `properties` object, and a `required` array. Existing
+/// fields (real `properties`, `additionalProperties`, etc.) are preserved.
+/// See FerroxLabs/wayland#24.
+fn normalize_tool_parameters(schema: &Value) -> Value {
+    let mut obj = match schema {
+        Value::Object(map) => map.clone(),
+        // null / non-object schema -> the empty object schema strict servers want
+        _ => serde_json::Map::new(),
+    };
+    obj.entry("type").or_insert_with(|| json!("object"));
+    if !obj.get("properties").is_some_and(Value::is_object) {
+        obj.insert("properties".to_string(), json!({}));
+    }
+    if !obj.get("required").is_some_and(Value::is_array) {
+        obj.insert("required".to_string(), json!([]));
+    }
+    Value::Object(obj)
 }
 
 /// Deduplicate tool results: keep last occurrence of each tool_call_id
@@ -1952,6 +1979,53 @@ mod tests {
         assert!(spawn_params["properties"].as_object().unwrap().is_empty());
         let spawn_desc = result[1]["function"]["description"].as_str().unwrap();
         assert!(spawn_desc.contains("ToolSearch"));
+    }
+
+    #[test]
+    fn test_build_tools_normalizes_bare_object_schema_issue_24() {
+        // Built-in and MCP tools that declare no structured args carry a bare
+        // `{"type":"object"}`. Strict OpenAI servers (LM Studio) reject that for
+        // missing `properties`. build_tools must normalize it. (#24)
+        let tools = vec![
+            ToolDef {
+                name: "execute".into(),
+                description: "run a command".into(),
+                input_schema: json!({"type": "object"}),
+                deferred: false,
+            },
+            ToolDef {
+                name: "ijfw_run".into(),
+                description: "ijfw".into(),
+                // arbitrary-object tool, still missing properties
+                input_schema: json!({"type": "object", "additionalProperties": true}),
+                deferred: false,
+            },
+            ToolDef {
+                name: "Read".into(),
+                description: "read".into(),
+                input_schema: json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
+                deferred: false,
+            },
+        ];
+        let result = OpenAIProvider::build_tools(&tools);
+
+        // bare {type:object} -> gains properties:{} and required:[]
+        let exec = &result[0]["function"]["parameters"];
+        assert_eq!(exec["type"], "object");
+        assert!(exec["properties"].is_object());
+        assert!(exec["properties"].as_object().unwrap().is_empty());
+        assert!(exec["required"].is_array());
+
+        // additionalProperties is preserved; properties + required still added
+        let ijfw = &result[1]["function"]["parameters"];
+        assert!(ijfw["properties"].is_object());
+        assert_eq!(ijfw["additionalProperties"], json!(true));
+        assert!(ijfw["required"].is_array());
+
+        // a well-formed schema is passed through untouched
+        let read = &result[2]["function"]["parameters"];
+        assert!(read["properties"].get("path").is_some());
+        assert_eq!(read["required"], json!(["path"]));
     }
 
     #[test]
