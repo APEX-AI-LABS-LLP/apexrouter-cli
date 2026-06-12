@@ -409,6 +409,35 @@ pub async fn tick_once_with_history(
                     "fired"
                 );
             }
+            // rank 3: a target that staged (was recorded) but had no live
+            // dispatcher in this process. ADVANCE last_fired so the job does
+            // not re-fire every tick within its due window (anti-hot-loop),
+            // but record it as Staged — NOT success. This is distinct from a
+            // real dispatch error below, which keeps last_fired pinned so the
+            // failed job retries.
+            Err(CronError::NoDispatcher) => {
+                job.last_fired = Some(now);
+                job.last_result = Some(CronFireOutcome::Staged);
+                let record = CronFireRecord {
+                    job_id: job.id.clone(),
+                    fired_at: now,
+                    outcome: CronFireOutcome::Staged,
+                };
+                if let Err(update_err) = store.update(job.clone()).await {
+                    warn!(
+                        target: "wcore_cron::runner",
+                        id = %job.id,
+                        error = %update_err,
+                        "failed to persist last_result after staged fire"
+                    );
+                }
+                append_history(history_path, &record);
+                debug!(
+                    target: "wcore_cron::runner",
+                    id = %job.id,
+                    "staged — no live dispatcher; last_fired advanced, not recorded as success"
+                );
+            }
             Err(e) => {
                 let outcome = CronFireOutcome::Error {
                     message: e.to_string(),
@@ -706,5 +735,65 @@ mod tests {
             updated.last_result,
             Some(CronFireOutcome::Error { .. })
         ));
+    }
+
+    // ----- rank 3: NoDispatcher → Staged advances last_fired (anti-hot-loop) -----
+
+    /// A handler that always reports "no live dispatcher" — the production
+    /// shape for a slash target firing in a process with no cross-session
+    /// dispatcher wired.
+    struct NoDispatcherHandler;
+
+    #[async_trait]
+    impl JobHandler for NoDispatcherHandler {
+        async fn dispatch(&self, _target: &Target) -> Result<()> {
+            Err(CronError::NoDispatcher)
+        }
+    }
+
+    #[tokio::test]
+    async fn staged_outcome_advances_last_fired() {
+        let dir = tempdir().unwrap();
+        let store = store_in(dir.path());
+        let handler_arc: Arc<dyn JobHandler> = Arc::new(NoDispatcherHandler);
+
+        // Anchor in the past so the first tick is due.
+        let mut job = CronJob::new(
+            "0 9 * * *",
+            Target::Slash {
+                command: "/morning".into(),
+            },
+        )
+        .unwrap();
+        job.created_at = Utc::now() - ChronoDuration::days(2);
+        store.insert(job.clone()).await.unwrap();
+
+        // First tick: NoDispatcher → Staged. last_fired MUST advance (so the
+        // job does not re-fire every tick) but the outcome is Staged, NOT
+        // success.
+        tick_once(&store, &handler_arc).await.unwrap();
+        let listed = store.list().await.unwrap();
+        let after_first = listed.iter().find(|j| j.id == job.id).unwrap();
+        assert!(
+            after_first.last_fired.is_some(),
+            "staged fire must advance last_fired to prevent hot-looping"
+        );
+        assert_eq!(
+            after_first.last_result,
+            Some(CronFireOutcome::Staged),
+            "staged fire must record Staged, not Success"
+        );
+        let first_fired_at = after_first.last_fired;
+
+        // Second tick within the same window: the advanced last_fired means
+        // the next-fire is tomorrow 9am, so the job must NOT re-fire — proving
+        // the anti-hot-loop behaviour.
+        tick_once(&store, &handler_arc).await.unwrap();
+        let listed2 = store.list().await.unwrap();
+        let after_second = listed2.iter().find(|j| j.id == job.id).unwrap();
+        assert_eq!(
+            after_second.last_fired, first_fired_at,
+            "a staged job must not re-fire on the next tick within its window"
+        );
     }
 }

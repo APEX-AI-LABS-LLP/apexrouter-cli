@@ -286,6 +286,7 @@ fn render_runner_job(rj: &wcore_cron::CronJob, name_hint: Option<&str>) -> ToolC
             wcore_cron::CronFireOutcome::Success { .. } => "success".to_string(),
             wcore_cron::CronFireOutcome::Error { message } => format!("error: {message}"),
             wcore_cron::CronFireOutcome::NoSink => "no_sink".to_string(),
+            wcore_cron::CronFireOutcome::Staged => "staged".to_string(),
         }),
         enabled: rj.enabled,
         state: Some(if rj.enabled { "scheduled" } else { "paused" }.to_string()),

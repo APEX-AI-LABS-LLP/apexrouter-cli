@@ -49,6 +49,9 @@ pub enum CronError {
     #[error("dispatch error: {0}")]
     Dispatch(String),
 
+    #[error("no live dispatcher available for this target")]
+    NoDispatcher,
+
     #[error("store error: {0}")]
     Store(String),
 }

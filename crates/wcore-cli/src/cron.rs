@@ -301,6 +301,9 @@ async fn status_cmd(id: &str, store: &FileCronStore) -> Result<()> {
         Some(CronFireOutcome::NoSink) => {
             "no-sink (nothing fired; last_fired not advanced)".to_string()
         }
+        Some(CronFireOutcome::Staged) => {
+            "staged (no live dispatcher; last_fired advanced, not a success)".to_string()
+        }
     };
 
     println!("id:          {}", job.id);
@@ -351,6 +354,7 @@ async fn history_cmd(id: &str, limit: usize, history_path: Option<&PathBuf>) -> 
             CronFireOutcome::Success { duration_ms } => format!("success ({duration_ms}ms)"),
             CronFireOutcome::Error { message } => format!("error: {message}"),
             CronFireOutcome::NoSink => "no-sink".to_string(),
+            CronFireOutcome::Staged => "staged (no live dispatcher)".to_string(),
         };
         println!("{ts}  {outcome}");
     }
@@ -372,6 +376,10 @@ async fn logs_cmd(id: &str, limit: usize, history_path: Option<&PathBuf>) -> Res
             }
             CronFireOutcome::Error { message } => ("WARN ", format!("dispatch failed: {message}")),
             CronFireOutcome::NoSink => ("WARN ", "no sink; last_fired not advanced".to_string()),
+            CronFireOutcome::Staged => (
+                "INFO ",
+                "staged — no live dispatcher; last_fired advanced".to_string(),
+            ),
         };
         println!("{ts}  {level}  wcore_cron::runner  job_id={id}  {outcome}");
     }
@@ -488,13 +496,17 @@ async fn daemon_body(
     eprintln!("[cron-daemon] started pid={my_pid}");
 
     let cron_store: Arc<dyn wcore_cron::CronStore> = Arc::new(store.clone());
-    // Daemon has no engine session — use a log-only handler. Skill/channel
-    // sinks are not available without a bootstrapped engine. The daemon's
-    // primary value is keeping last_fired accurate and history.jsonl populated
-    // between interactive sessions. A future improvement can wire a minimal
-    // engine bootstrap here.
+    // rank 3: the daemon has no engine session, but it CAN dispatch Skill and
+    // Channel jobs headlessly. Build a real handler (engine-less skill sink +
+    // started ChannelManager); Slash stays None (no cross-session dispatcher),
+    // so slash fires stage → Staged. Previously this installed a log-only
+    // RecordingHandler, so every Skill/Channel daemon fire silently no-op'd.
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| ".".to_string());
     let handler: Arc<dyn wcore_cron::JobHandler> =
-        Arc::new(wcore_cron::runner::RecordingHandler::new());
+        Arc::new(wcore_agent::cron::build_headless_cron_handler(&cwd).await);
+    eprintln!("[cron-daemon] headless cron handler initialized (skill + channel sinks wired)");
 
     let mut ticker = tokio::time::interval(wcore_cron::runner::TICK_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

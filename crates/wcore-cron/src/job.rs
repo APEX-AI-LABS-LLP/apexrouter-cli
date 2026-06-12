@@ -98,7 +98,18 @@ pub enum CronFireOutcome {
     /// The handler had no sink for this target type (e.g. channel fires
     /// when no ChannelManager is wired). `last_fired` is NOT advanced
     /// when this outcome is recorded.
+    ///
+    /// Superseded by [`CronFireOutcome::Staged`] / [`crate::CronError::NoDispatcher`]
+    /// for the no-live-dispatcher case (rank 3). Kept as a variant because
+    /// removing it would be a breaking on-disk/API change.
     NoSink,
+    /// The fire was recorded/staged but no live dispatcher was available
+    /// to actually execute it (e.g. the cross-session slash dispatcher, or
+    /// a skill/channel sink absent in this process). Distinct from
+    /// [`CronFireOutcome::NoSink`] and from success: `last_fired` IS
+    /// advanced (so the job does not hot-loop re-firing every tick within
+    /// its window) but the outcome is NOT recorded as a success.
+    Staged,
 }
 
 /// Snapshot of a single cron fire, written to the ring-buffer history

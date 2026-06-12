@@ -100,8 +100,14 @@ impl JobHandler for EngineJobHandler {
                     info!(
                         target: "wcore_agent::cron",
                         command = %command,
-                        "slash cron fired (no active dispatcher — fire logged)"
+                        "slash cron staged (no active dispatcher — fire logged)"
                     );
+                    // rank 3: no live slash dispatcher in this process (the
+                    // cross-session dispatcher is out of scope here). Return
+                    // NoDispatcher so the runner records the fire as Staged and
+                    // advances last_fired (anti-hot-loop) WITHOUT falsely
+                    // marking it a success.
+                    return Err(CronError::NoDispatcher);
                 }
                 Ok(())
             }
@@ -149,13 +155,174 @@ impl JobHandler for EngineJobHandler {
                     info!(
                         target: "wcore_agent::cron",
                         skill = %name,
-                        "skill cron fired (no active dispatcher — fire logged)"
+                        "skill cron staged (no active dispatcher — fire logged)"
                     );
+                    // rank 3: no skill sink wired in this process. Return
+                    // NoDispatcher so the runner stages the fire (advances
+                    // last_fired, anti-hot-loop) rather than recording a false
+                    // success.
+                    return Err(CronError::NoDispatcher);
                 }
                 Ok(())
             }
         }
     }
+}
+
+/// rank 3: build a real headless [`EngineJobHandler`] for a NO-LLM, NO-TUI
+/// process (the `cron daemon`). Without this, the daemon installed a log-only
+/// handler and every Skill/Channel fire silently no-op'd.
+///
+/// Constructs, for the given working directory:
+/// - a **skill sink** — engine-less skill execution via a transient
+///   [`crate::skill_tool::SkillTool`] (no LLM, no session). The catalog is
+///   built the same way `bootstrap.rs` builds it (`load_catalog` +
+///   cross-project widening). The M-18 post-substitution `!shell:` body+args
+///   scan is copied verbatim from bootstrap so an unattended daemon fire is
+///   held to the same execution-boundary denylist.
+/// - a **channel sink** — a [`wcore_channels::ChannelManager`] auto-registered
+///   from `~/.wayland/channels/*.toml` and `start_all`'d, so Channel cron jobs
+///   dispatch.
+///
+/// Slash stays `None` (the cross-session slash dispatcher is out of scope for
+/// a headless process — those fires now correctly yield NoDispatcher → Staged).
+///
+/// Config loads use `unwrap_or_default()` so the unattended daemon never
+/// panics. The caller should treat any construction problem as non-fatal and
+/// fall back to [`EngineJobHandler::log_only`].
+pub async fn build_headless_cron_handler(cwd: &str) -> EngineJobHandler {
+    use std::sync::Arc;
+
+    // Resolved config — default on any load failure so the daemon never
+    // panics. Default carries sane skill deny/allow + auto_approve and a
+    // working credentials-store opener.
+    let config = wcore_config::config::Config::default();
+
+    let cwd_path = std::path::Path::new(cwd);
+
+    // --- Skill sink (engine-less) ---------------------------------------
+    // Build the catalog exactly as bootstrap does: load from disk, then widen
+    // to sibling projects when cwd has a parent.
+    let mut catalog = {
+        let refs = wcore_skills::loader::load_catalog(cwd_path, &[], false, None).await;
+        wcore_skills::refs::SkillCatalog::from_refs(refs)
+    };
+    if let Some(siblings_root) = cwd_path.parent() {
+        catalog = catalog.with_cross_project_root(siblings_root);
+    }
+    let catalog = Arc::new(catalog);
+
+    let skill_sink: SkillSink = {
+        let catalog_for_cron = Arc::clone(&catalog);
+        let deny_rules = config.tools.skills.deny.clone();
+        let allow_rules = config.tools.skills.allow.clone();
+        let auto_approve = config.tools.auto_approve;
+        let cwd_for_cron = cwd.to_string();
+        Arc::new(move |skill_name: String, args: serde_json::Value| {
+            let catalog = Arc::clone(&catalog_for_cron);
+            let checker = wcore_skills::permissions::SkillPermissionChecker::new(
+                deny_rules.clone(),
+                allow_rules.clone(),
+                auto_approve,
+            );
+            let cwd = cwd_for_cron.clone();
+            Box::pin(async move {
+                // Aud-12 / M-18 (+ B8 follow-up): the cron runner's
+                // pre-dispatch `scan_target` only inspects the Skill
+                // target's name + raw args. The text that actually executes
+                // unattended is the skill BODY (`!shell:` directives run via
+                // sh -c) AFTER argument substitution. A benign-looking `args`
+                // value can splice a denylisted payload into a `!shell:`
+                // body line that only becomes dangerous post-substitution.
+                //
+                // Scan the EXACT post-substitution string the shell will
+                // receive: `render_shell_input` is the same function
+                // `prepare_inline_content` (inside `SkillTool::execute`)
+                // runs to compose the shell input, so the scanned bytes are
+                // byte-identical to the executed bytes. The sink builds a
+                // `SkillTool::new` (session_id = None) and passes `args`
+                // through unchanged as the tool's `args` param, whose
+                // `as_str()` is what the executor reads — so we mirror both
+                // here. `resolve` hits the catalog LRU that
+                // `SkillTool::execute` reuses, so this is not a second disk
+                // read in the common case.
+                if let Ok(skill) = catalog.resolve(&skill_name).await {
+                    let args_str = args.as_str();
+                    let composed =
+                        wcore_skills::executor::render_shell_input(&skill, args_str, None);
+                    // Cheap raw-args scan retained: catches payloads that
+                    // never reach a `!shell:` line (e.g. injected into a
+                    // non-shell body region) but are still attacker-supplied.
+                    let raw_args = serde_json::to_string(&args).unwrap_or_default();
+                    for chunk in [composed.as_str(), raw_args.as_str()] {
+                        if let Some(reason) = wcore_cron::runner::scan_target_text(chunk) {
+                            warn!(
+                                target: "wcore_agent::cron",
+                                skill = %skill_name,
+                                reason = %reason,
+                                "cron skill blocked: substituted body/args failed \
+                                 execution-boundary scan"
+                            );
+                            return Err(format!(
+                                "cron skill '{skill_name}' blocked before dispatch: {reason}"
+                            ));
+                        }
+                    }
+                }
+                let tool = crate::skill_tool::SkillTool::new(catalog, cwd, checker);
+                let input = serde_json::json!({ "skill": skill_name, "args": args });
+                let result = wcore_tools::Tool::execute(&tool, input).await;
+                if result.is_error {
+                    Err(result.content)
+                } else {
+                    Ok(())
+                }
+            })
+        })
+    };
+
+    // --- Channel sink ----------------------------------------------------
+    // Auto-register channels from ~/.wayland/channels and start their poll
+    // loops so Channel cron jobs dispatch. Every failure is non-fatal — the
+    // handler still has a working skill sink.
+    let mut channel_manager_inner = wcore_channels::ChannelManager::new();
+    match config.open_credentials_store() {
+        Ok(store) => {
+            let creds: Arc<dyn wcore_config::credentials::CredentialsStore> = Arc::from(store);
+            match wcore_channels_registry::auto_register_from_user_config(
+                &mut channel_manager_inner,
+                creds,
+            )
+            .await
+            {
+                Ok(count) => info!(
+                    target: "wcore_agent::cron",
+                    count,
+                    "headless cron handler: channels auto-registered from ~/.wayland/channels"
+                ),
+                Err(e) => warn!(
+                    target: "wcore_agent::cron",
+                    error = %e,
+                    "headless cron handler: channel auto-register failed; continuing"
+                ),
+            }
+        }
+        Err(e) => warn!(
+            target: "wcore_agent::cron",
+            error = %e,
+            "headless cron handler: credentials store open failed; channels unavailable"
+        ),
+    }
+    let channels = Arc::new(tokio::sync::Mutex::new(channel_manager_inner));
+    if let Err(e) = channels.lock().await.start_all().await {
+        warn!(
+            target: "wcore_agent::cron",
+            error = %e,
+            "headless cron handler: channel start_all failed; inbound polling may be partial"
+        );
+    }
+
+    EngineJobHandler::new(Some(channels), None, Some(skill_sink))
 }
 
 #[cfg(test)]
@@ -167,20 +334,32 @@ mod tests {
     use wcore_channels::MockChannel;
     use wcore_cron::JobHandler;
 
+    /// rank 3: a log-only handler has no live slash/skill dispatcher, so both
+    /// arms must return `CronError::NoDispatcher` (which the runner turns into
+    /// a Staged outcome + last_fired advance, NOT a false success). Previously
+    /// these arms returned Ok and the runner recorded success on a no-op.
     #[tokio::test]
-    async fn log_only_handler_succeeds_on_slash_and_skill() {
+    async fn log_only_slash_and_skill_return_no_dispatcher() {
         let h = EngineJobHandler::log_only();
-        h.dispatch(&Target::Slash {
-            command: "/x".into(),
-        })
-        .await
-        .unwrap();
-        h.dispatch(&Target::Skill {
-            name: "noop".into(),
-            args: serde_json::json!({}),
-        })
-        .await
-        .unwrap();
+        let slash = h
+            .dispatch(&Target::Slash {
+                command: "/x".into(),
+            })
+            .await;
+        assert!(
+            matches!(slash, Err(CronError::NoDispatcher)),
+            "slash with no dispatcher must return NoDispatcher, got {slash:?}"
+        );
+        let skill = h
+            .dispatch(&Target::Skill {
+                name: "noop".into(),
+                args: serde_json::json!({}),
+            })
+            .await;
+        assert!(
+            matches!(skill, Err(CronError::NoDispatcher)),
+            "skill with no sink must return NoDispatcher, got {skill:?}"
+        );
     }
 
     /// F-063: channel with no sink returns Err so the runner does NOT
@@ -262,5 +441,28 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(*counter.lock().await, 1);
+    }
+
+    /// rank 3: the headless handler must build without panicking and wire a
+    /// real skill sink (so daemon-fired Skill jobs dispatch instead of
+    /// silently no-op'ing). Slash stays None by design (no cross-session
+    /// dispatcher in a headless process). The test module shares the file, so
+    /// it can read the otherwise-private fields directly.
+    #[tokio::test]
+    async fn headless_handler_builds_with_skill_sink() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = build_headless_cron_handler(&dir.path().to_string_lossy()).await;
+        assert!(
+            h.skill.is_some(),
+            "headless handler must wire a skill sink so Skill cron jobs dispatch"
+        );
+        assert!(
+            h.channels.is_some(),
+            "headless handler must wire a channel manager so Channel cron jobs dispatch"
+        );
+        assert!(
+            h.slash.is_none(),
+            "slash stays None in a headless process (no cross-session dispatcher)"
+        );
     }
 }
