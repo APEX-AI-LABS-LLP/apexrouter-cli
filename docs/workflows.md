@@ -297,10 +297,34 @@ default-config session behaves byte-for-byte as before. Even when on, the signal
 **never** prompts the user, routes the turn, or selects a template — it only
 writes to the trace log.
 
-**v1 limitation.** The live confirm gate ("Run as a Fleet workflow? ~N agents /
-~$X / ~T min — [y/N]") and the detected-tier auto-proposal are **not active in
-v1**. Detection is shadow-mode only; there is no silent fan-out and no implicit
-pre-authorization. The Auto tier (run without asking) is gated on the
-shadow-mode precision phase and deferred. When the confirm gate does land, a
-ForgeFlow approval will pre-authorize nothing — every inner `Edit`/`Exec` call
-keeps its own tool gate.
+**Live mode (opt-in).** The live confirm gate ("Run as a Fleet workflow? ~N
+agents / ~$X / ~T min — [y/N]") is implemented and gated behind
+`[observability] workflow_live_mode` (default **off**; it additionally requires
+an approval manager + protocol writer — i.e. a host session). When on, a turn
+the detector flags as workflow-worthy is intercepted **before the first LLM
+call** (so there is no orphaned-`tool_use` hazard): the engine synthesizes a RON
+plan, emits a confirm card, and on approval runs the real workflow on the
+`WorkflowRunner`, returning its result as the turn's response. On decline /
+synthesis failure / timeout it falls through to a normal turn. A ForgeFlow
+approval pre-authorizes nothing — every inner `Edit`/`Exec` call keeps its own
+tool gate. The fully-autonomous Auto tier (run without asking) remains deferred
+pending the shadow-mode precision phase.
+
+## Live observability (ForgeFlows-Live)
+
+A running workflow streams a live event feed to the host so a UI can show the
+swarm working — list runs, drill into each node/sub-agent, watch output in real
+time. The events (gated by the `sub_agent_traces` capability, which the
+json-stream host path enables by default):
+
+- `workflow_started { workflow_id, name, node_count }` — a run began.
+- `sub_agent_event { parent_call_id: "workflow:<node_id>", agent_name, inner }`
+  — one event from a node as it works (`inner` is a nested `ProtocolEvent`:
+  `text_delta` / `tool_request` / `tool_result` / `stream_end` / `info` /
+  `error`). Group by `parent_call_id` to build the per-node drill-in.
+- `workflow_finished { workflow_id, succeeded }` — the run ended (always emitted,
+  including on a task panic/cancel, so a run-card never hangs "running").
+
+Cancel a running workflow with the `{"type":"stop"}` command. The built-in TUI
+renders this as a **Workflows** tab; host apps consume the same events over the
+JSON-stream protocol (see [json-stream-protocol.md](json-stream-protocol.md)).
