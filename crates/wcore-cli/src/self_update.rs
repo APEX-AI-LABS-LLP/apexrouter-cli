@@ -1,24 +1,34 @@
-//! v0.8.1 U9 — `wayland-core self-update` subcommand.
+//! `wayland-core self-update` subcommand.
 //!
 //! Pulls the latest release from GitHub (`FerroxLabs/wayland-core`),
-//! verifies the `.sig` artifact against the pinned marketplace pubkey
-//! (ed25519), and atomically replaces the running binary via
+//! verifies its **keyless Sigstore build-provenance attestation** via the
+//! GitHub CLI (`gh attestation verify`), extracts the binary from the
+//! release archive, and atomically replaces the running binary via
 //! `self_replace`.
 //!
+//! Why keyless (not a pinned ed25519 release key): the prior scheme shipped
+//! an all-zero placeholder key and the release pipeline never produced `.sig`
+//! files, so self-update could not work and carried long-lived-key custody
+//! debt. Releases are now signed keylessly via GitHub OIDC + Sigstore
+//! (`actions/attest-build-provenance` in `release.yml`); verification needs no
+//! pinned key — `gh` checks the attestation against the source repo and the
+//! public Sigstore transparency log. See finding R16.
+//!
 //! Threat model:
-//! - The release API URL is a static const; we never interpolate user
-//!   input into a host. The artifact + sig URLs come straight from the
-//!   GitHub API response (`browser_download_url`).
-//! - Verification is ed25519 over the *binary bytes* — same shape used
-//!   by `wcore-agent::plugins::sig_verifier` for plugin signatures. A
-//!   tampered binary OR a tampered sig is rejected with
-//!   `SignatureVerificationFailed`.
-//! - The download is size-checked against the `Content-Length` header
-//!   when present; if absent, we still verify the signature so a
-//!   short-write attack still cannot succeed.
+//! - The release API URL is a static const; we never interpolate user input
+//!   into a host. The archive URL comes straight from the GitHub API response
+//!   (`browser_download_url`).
+//! - Provenance is verified against the pinned source repo
+//!   (`FerroxLabs/wayland-core`): a binary not built by that repo's release
+//!   workflow fails verification, so a swapped/tampered archive is rejected
+//!   before extraction.
+//! - The download is size-checked against the `Content-Length` header when
+//!   present; verification then runs over the downloaded archive regardless.
+//! - `gh` must be present. If it is not, we refuse to install rather than
+//!   skip verification — fail closed, with guidance to install `gh` or
+//!   reinstall via npm (itself provenance-backed).
 
 use anyhow::{Context, Result, bail};
-use ed25519_dalek::{Signature, VerifyingKey, ed25519::signature::Verifier};
 use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
@@ -26,25 +36,6 @@ use tokio::io::AsyncWriteExt;
 /// GitHub repo that hosts wayland-core releases. Pinned to the production
 /// org so a misconfigured workspace cannot redirect updates elsewhere.
 pub const RELEASES_REPO: &str = "FerroxLabs/wayland-core";
-
-/// Pinned marketplace ed25519 public key (32 raw bytes, base64-encoded).
-///
-/// IMPORTANT: replace the placeholder below at v0.8.1 release-cut time
-/// with the real production marketplace key. Until then, the key field
-/// is honored via the `WAYLAND_SELF_UPDATE_PUBKEY_B64` environment
-/// override (used in tests; documented in `RELEASING.md` for the
-/// transition period).
-///
-/// The const intentionally encodes a deterministic all-zero key so that
-/// in the absence of an env override the verification path is
-/// guaranteed to FAIL closed (an all-zero ed25519 key cannot validly
-/// sign anything a release would publish).
-pub const MARKETPLACE_PUBKEY_B64: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-
-/// Env override for the pinned pubkey. The CLI prefers this when set so
-/// the release engineer can roll the key without a code change. Tests
-/// also use this to inject a freshly-generated keypair.
-pub const ENV_PUBKEY_B64: &str = "WAYLAND_SELF_UPDATE_PUBKEY_B64";
 
 /// Entry point. `check_only=true` prints the version diff and returns
 /// without touching disk.
@@ -73,29 +64,29 @@ pub async fn run(check_only: bool) -> Result<()> {
         return Ok(());
     }
 
-    let artifact_name = artifact_name_for_host();
-    let sig_name = format!("{artifact_name}.sig");
+    // The release packages one archive per target (see release.yml):
+    // `wayland-core-vX.Y.Z-<triple>.{tar.gz,zip}`. Match that exactly.
+    let archive_name = archive_name_for_host(latest_version);
 
     let asset = release
         .assets
         .iter()
-        .find(|a| a.name == artifact_name)
-        .with_context(|| format!("no {artifact_name} in release v{latest_version}"))?;
-    let sig_asset = release
-        .assets
-        .iter()
-        .find(|a| a.name == sig_name)
-        .with_context(|| format!("no {sig_name} in release v{latest_version}"))?;
+        .find(|a| a.name == archive_name)
+        .with_context(|| format!("no {archive_name} in release v{latest_version}"))?;
 
     let tmp = tempfile::tempdir()?;
-    let bin_path = tmp.path().join(&artifact_name);
-    let sig_path = tmp.path().join(&sig_name);
-    download_to(&asset.browser_download_url, &bin_path).await?;
-    download_to(&sig_asset.browser_download_url, &sig_path).await?;
+    let archive_path = tmp.path().join(&archive_name);
+    download_to(&asset.browser_download_url, &archive_path).await?;
 
-    let pubkey = load_pinned_pubkey()?;
-    verify_signature(&pubkey, &bin_path, &sig_path)
-        .context("signature verification failed — refusing to install untrusted binary")?;
+    // Keyless provenance check BEFORE we extract or swap anything.
+    verify_provenance(&archive_path, RELEASES_REPO)
+        .await
+        .context("provenance verification failed — refusing to install untrusted binary")?;
+
+    let unpack_dir = tmp.path().join("unpack");
+    std::fs::create_dir(&unpack_dir).context("create unpack dir")?;
+    let bin_path = extract_binary(&archive_path, &unpack_dir)
+        .context("extract binary from verified release archive")?;
 
     atomic_swap(&bin_path)?;
     println!("upgraded to v{latest_version}");
@@ -173,22 +164,32 @@ pub async fn fetch_latest_release(repo: &str) -> Result<Option<Release>> {
 // Host artifact mapping
 // ---------------------------------------------------------------------
 
-/// Map `(target_os, target_arch)` → release artifact filename. Matches
-/// the names produced by `.github/workflows/release.yml`.
-pub fn artifact_name_for_host() -> String {
-    artifact_name_for(std::env::consts::OS, std::env::consts::ARCH)
+/// Map `(target_os, target_arch)` → the Rust target triple used in release
+/// artifact names. Matches the build matrix in `.github/workflows/release.yml`.
+pub fn target_triple_for(os: &str, arch: &str) -> String {
+    match (os, arch) {
+        ("macos", "aarch64") => "aarch64-apple-darwin".into(),
+        ("macos", "x86_64") => "x86_64-apple-darwin".into(),
+        ("linux", "x86_64") => "x86_64-unknown-linux-gnu".into(),
+        ("linux", "aarch64") => "aarch64-unknown-linux-gnu".into(),
+        ("windows", "x86_64") => "x86_64-pc-windows-msvc".into(),
+        ("windows", "aarch64") => "aarch64-pc-windows-msvc".into(),
+        (o, a) => format!("{a}-unknown-{o}"),
+    }
+}
+
+/// Release archive filename for the host, e.g.
+/// `wayland-core-v0.11.0-aarch64-apple-darwin.tar.gz`. Windows targets ship a
+/// `.zip`; every other target ships `.tar.gz` (see release.yml packaging).
+pub fn archive_name_for_host(version: &str) -> String {
+    archive_name_for(version, std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// Pure mapping for tests.
-pub fn artifact_name_for(os: &str, arch: &str) -> String {
-    match (os, arch) {
-        ("macos", "aarch64") => "wayland-core-aarch64-apple-darwin".into(),
-        ("macos", "x86_64") => "wayland-core-x86_64-apple-darwin".into(),
-        ("linux", "x86_64") => "wayland-core-x86_64-unknown-linux-gnu".into(),
-        ("linux", "aarch64") => "wayland-core-aarch64-unknown-linux-gnu".into(),
-        ("windows", "x86_64") => "wayland-core-x86_64-pc-windows-msvc.exe".into(),
-        (o, a) => format!("wayland-core-{a}-{o}"),
-    }
+pub fn archive_name_for(version: &str, os: &str, arch: &str) -> String {
+    let triple = target_triple_for(os, arch);
+    let ext = if os == "windows" { "zip" } else { "tar.gz" };
+    format!("wayland-core-v{version}-{triple}.{ext}")
 }
 
 // ---------------------------------------------------------------------
@@ -235,43 +236,129 @@ pub async fn download_to(url: &str, path: &Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------
-// Signature verification
+// Keyless provenance verification
 // ---------------------------------------------------------------------
 
-/// Resolve the pinned marketplace pubkey. Env override takes precedence
-/// over the compiled-in const so release engineers can rotate the key
-/// without a code change.
-pub fn load_pinned_pubkey() -> Result<VerifyingKey> {
-    let b64 = std::env::var(ENV_PUBKEY_B64).unwrap_or_else(|_| MARKETPLACE_PUBKEY_B64.to_string());
-    parse_pubkey_b64(&b64).context("parse pinned marketplace pubkey")
+/// Verify the release archive's Sigstore build-provenance attestation via the
+/// GitHub CLI, pinning the source repo. Fails closed: a missing `gh`, a failed
+/// check, or any non-zero exit is an error — never a silent skip.
+pub async fn verify_provenance(archive_path: &Path, repo: &str) -> Result<()> {
+    verify_provenance_with("gh", archive_path, repo).await
 }
 
-/// Parse a base64-encoded 32-byte ed25519 verifying key.
-pub fn parse_pubkey_b64(b64: &str) -> Result<VerifyingKey> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64.trim())
-        .context("pubkey base64 decode")?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("pubkey must be 32 raw ed25519 bytes after base64 decode"))?;
-    VerifyingKey::from_bytes(&arr).context("pubkey not a valid ed25519 point")
-}
+/// Inner form with an injectable program name so tests can exercise the
+/// `gh`-missing path without a real `gh` on the box.
+async fn verify_provenance_with(program: &str, archive_path: &Path, repo: &str) -> Result<()> {
+    let archive = archive_path
+        .to_str()
+        .context("archive path is not valid UTF-8")?;
+    // argv mode: no shell is involved, so metacharacters in arguments are never
+    // interpreted. `archive` is a path we just created under our own tempdir
+    // (never attacker-controlled) and `repo` is a compile-time const.
+    let output = wcore_config::shell::shell_command_argv(
+        program,
+        &["attestation", "verify", archive, "--repo", repo],
+    )
+    .output()
+    .await
+    .map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            anyhow::anyhow!(
+                "GitHub CLI (`gh`) not found — it is required to verify release \
+                 provenance. Install it from https://cli.github.com, or update via \
+                 npm instead: npm install -g @ferroxlabs/wayland-core@latest"
+            )
+        } else {
+            anyhow::Error::new(e).context("spawn `gh attestation verify`")
+        }
+    })?;
 
-/// Verify `sig_path` (raw 64-byte ed25519 signature) over the contents
-/// of `bin_path` against `pubkey`.
-pub fn verify_signature(pubkey: &VerifyingKey, bin_path: &Path, sig_path: &Path) -> Result<()> {
-    let bin =
-        std::fs::read(bin_path).with_context(|| format!("read binary {}", bin_path.display()))?;
-    let sig_bytes =
-        std::fs::read(sig_path).with_context(|| format!("read sig {}", sig_path.display()))?;
-    let sig_arr: [u8; 64] = sig_bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("sig must be 64 raw ed25519 bytes"))?;
-    let sig = Signature::from_bytes(&sig_arr);
-    pubkey.verify(&bin, &sig).context("ed25519 verify failed")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "`gh attestation verify` rejected {}: {}",
+            archive_path.display(),
+            stderr.trim()
+        );
+    }
     Ok(())
+}
+
+// ---------------------------------------------------------------------
+// Archive extraction
+// ---------------------------------------------------------------------
+
+/// Extract the wayland-core binary from a verified release archive into
+/// `dest_dir`, returning the path to the extracted executable. Supports
+/// `.tar.gz` (macOS/Linux) and `.zip` (Windows). Call only AFTER provenance
+/// verification has succeeded.
+pub fn extract_binary(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    let name = archive_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("archive has no filename")?;
+    if name.ends_with(".zip") {
+        extract_zip(archive_path, dest_dir)
+    } else if name.ends_with(".tar.gz") {
+        extract_tar_gz(archive_path, dest_dir)
+    } else {
+        bail!("unrecognized archive extension for {name}");
+    }
+}
+
+fn extract_tar_gz(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    let f = std::fs::File::open(archive_path)
+        .with_context(|| format!("open {}", archive_path.display()))?;
+    let gz = flate2::read::GzDecoder::new(f);
+    let mut ar = tar::Archive::new(gz);
+    ar.unpack(dest_dir)
+        .with_context(|| format!("unpack tar.gz into {}", dest_dir.display()))?;
+    find_extracted_binary(dest_dir)
+}
+
+fn extract_zip(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    let f = std::fs::File::open(archive_path)
+        .with_context(|| format!("open {}", archive_path.display()))?;
+    let mut zip = zip::ZipArchive::new(f).context("read zip archive")?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).context("read zip entry")?;
+        if entry.is_dir() {
+            continue;
+        }
+        // Zip-slip guard: reject any entry whose path escapes via `..` or an
+        // absolute root, and write only the flat filename into dest_dir.
+        let enclosed = entry
+            .enclosed_name()
+            .context("zip entry has an unsafe path")?;
+        let Some(file_name) = enclosed.file_name() else {
+            continue;
+        };
+        let out = dest_dir.join(file_name);
+        let mut w =
+            std::fs::File::create(&out).with_context(|| format!("create {}", out.display()))?;
+        std::io::copy(&mut entry, &mut w).context("write zip entry")?;
+    }
+    find_extracted_binary(dest_dir)
+}
+
+/// Locate the extracted wayland-core executable in `dir`. The release archive
+/// holds exactly the binary (`wayland-core` or `wayland-core.exe`).
+fn find_extracted_binary(dir: &Path) -> Result<PathBuf> {
+    for entry in std::fs::read_dir(dir).with_context(|| format!("read_dir {}", dir.display()))? {
+        let path = entry?.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Some(stem) = path.file_name().and_then(|n| n.to_str())
+            && (stem == "wayland-core" || stem == "wayland-core.exe")
+        {
+            return Ok(path);
+        }
+    }
+    bail!(
+        "no wayland-core binary found in extracted archive at {}",
+        dir.display()
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -322,8 +409,7 @@ pub fn current_exe_path() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{SigningKey, ed25519::signature::Signer};
-    use rand::rngs::OsRng;
+    use std::io::Write;
     use tempfile::TempDir;
 
     #[test]
@@ -354,97 +440,121 @@ mod tests {
     }
 
     #[test]
-    fn artifact_name_macos_arm64() {
+    fn target_triple_known_hosts() {
+        assert_eq!(target_triple_for("macos", "aarch64"), "aarch64-apple-darwin");
+        assert_eq!(target_triple_for("macos", "x86_64"), "x86_64-apple-darwin");
         assert_eq!(
-            artifact_name_for("macos", "aarch64"),
-            "wayland-core-aarch64-apple-darwin"
+            target_triple_for("linux", "x86_64"),
+            "x86_64-unknown-linux-gnu"
+        );
+        assert_eq!(
+            target_triple_for("windows", "x86_64"),
+            "x86_64-pc-windows-msvc"
         );
     }
 
     #[test]
-    fn artifact_name_linux_x64() {
+    fn archive_name_unix_is_tar_gz() {
         assert_eq!(
-            artifact_name_for("linux", "x86_64"),
-            "wayland-core-x86_64-unknown-linux-gnu"
+            archive_name_for("0.11.0", "linux", "x86_64"),
+            "wayland-core-v0.11.0-x86_64-unknown-linux-gnu.tar.gz"
+        );
+        assert_eq!(
+            archive_name_for("0.11.0", "macos", "aarch64"),
+            "wayland-core-v0.11.0-aarch64-apple-darwin.tar.gz"
         );
     }
 
     #[test]
-    fn artifact_name_windows_x64() {
+    fn archive_name_windows_is_zip() {
         assert_eq!(
-            artifact_name_for("windows", "x86_64"),
-            "wayland-core-x86_64-pc-windows-msvc.exe"
+            archive_name_for("0.11.0", "windows", "x86_64"),
+            "wayland-core-v0.11.0-x86_64-pc-windows-msvc.zip"
         );
     }
 
     #[test]
-    fn artifact_name_for_host_matches_known_shape() {
-        // The host-derived name MUST start with "wayland-core-".
-        let n = artifact_name_for_host();
-        assert!(n.starts_with("wayland-core-"), "got {n}");
+    fn archive_name_for_host_matches_known_shape() {
+        let n = archive_name_for_host("9.9.9");
+        assert!(n.starts_with("wayland-core-v9.9.9-"), "got {n}");
+        assert!(n.ends_with(".tar.gz") || n.ends_with(".zip"), "got {n}");
     }
 
+    /// A `.tar.gz` holding the binary round-trips through extract_binary.
     #[test]
-    fn parse_pubkey_b64_round_trip() {
-        use base64::Engine;
-        let sk = SigningKey::generate(&mut OsRng);
-        let b64 = base64::engine::general_purpose::STANDARD.encode(sk.verifying_key().as_bytes());
-        let vk = parse_pubkey_b64(&b64).unwrap();
-        assert_eq!(vk.as_bytes(), sk.verifying_key().as_bytes());
-    }
-
-    #[test]
-    fn parse_pubkey_b64_rejects_garbage() {
-        assert!(parse_pubkey_b64("not-base64!!!").is_err());
-        assert!(parse_pubkey_b64("AAAA").is_err()); // wrong length
-    }
-
-    fn write_pair(tmp: &TempDir, body: &[u8], sig: &[u8]) -> (PathBuf, PathBuf) {
-        let bin = tmp.path().join("artifact");
-        let s = tmp.path().join("artifact.sig");
-        std::fs::write(&bin, body).unwrap();
-        std::fs::write(&s, sig).unwrap();
-        (bin, s)
-    }
-
-    #[test]
-    fn verify_signature_accepts_valid_sig() {
-        let sk = SigningKey::generate(&mut OsRng);
-        let body = b"release-binary-bytes";
-        let sig: Signature = sk.sign(body);
+    fn extract_tar_gz_recovers_binary() {
         let tmp = TempDir::new().unwrap();
-        let (bin, sig_path) = write_pair(&tmp, body, &sig.to_bytes());
-        assert!(verify_signature(&sk.verifying_key(), &bin, &sig_path).is_ok());
+        let archive = tmp
+            .path()
+            .join("wayland-core-v9.9.9-x86_64-unknown-linux-gnu.tar.gz");
+        let body = b"#!/bin/sh\necho wayland\n";
+        {
+            let f = std::fs::File::create(&archive).unwrap();
+            let enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            let mut builder = tar::Builder::new(enc);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "wayland-core", &body[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        let dest = tmp.path().join("unpack");
+        std::fs::create_dir(&dest).unwrap();
+        let bin = extract_binary(&archive, &dest).unwrap();
+        assert_eq!(bin.file_name().unwrap(), "wayland-core");
+        assert_eq!(std::fs::read(&bin).unwrap(), body);
+    }
+
+    /// A `.zip` holding the Windows binary round-trips through extract_binary.
+    #[test]
+    fn extract_zip_recovers_binary() {
+        let tmp = TempDir::new().unwrap();
+        let archive = tmp
+            .path()
+            .join("wayland-core-v9.9.9-x86_64-pc-windows-msvc.zip");
+        let body = b"MZ\x90\x00fake-windows-binary";
+        {
+            let f = std::fs::File::create(&archive).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            zw.start_file("wayland-core.exe", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zw.write_all(body).unwrap();
+            zw.finish().unwrap();
+        }
+        let dest = tmp.path().join("unpack");
+        std::fs::create_dir(&dest).unwrap();
+        let bin = extract_binary(&archive, &dest).unwrap();
+        assert_eq!(bin.file_name().unwrap(), "wayland-core.exe");
+        assert_eq!(std::fs::read(&bin).unwrap(), body);
     }
 
     #[test]
-    fn verify_signature_rejects_tampered_blob() {
-        let sk = SigningKey::generate(&mut OsRng);
-        let body = b"release-binary-bytes";
-        let sig: Signature = sk.sign(body);
+    fn extract_binary_rejects_unknown_extension() {
         let tmp = TempDir::new().unwrap();
-        // Write the *tampered* body but the original sig.
-        let (bin, sig_path) = write_pair(&tmp, b"tampered-bytes", &sig.to_bytes());
-        assert!(verify_signature(&sk.verifying_key(), &bin, &sig_path).is_err());
+        let archive = tmp.path().join("wayland-core-v9.9.9-weird.rar");
+        std::fs::write(&archive, b"junk").unwrap();
+        assert!(extract_binary(&archive, tmp.path()).is_err());
     }
 
-    #[test]
-    fn verify_signature_rejects_wrong_key() {
-        let signer = SigningKey::generate(&mut OsRng);
-        let other = SigningKey::generate(&mut OsRng);
-        let body = b"release-binary-bytes";
-        let sig: Signature = signer.sign(body);
+    /// Provenance verification fails closed when `gh` is absent: the error must
+    /// carry actionable install guidance, never a silent skip.
+    #[tokio::test]
+    async fn verify_provenance_fails_closed_without_gh() {
         let tmp = TempDir::new().unwrap();
-        let (bin, sig_path) = write_pair(&tmp, body, &sig.to_bytes());
-        assert!(verify_signature(&other.verifying_key(), &bin, &sig_path).is_err());
-    }
-
-    #[test]
-    fn verify_signature_rejects_short_sig() {
-        let sk = SigningKey::generate(&mut OsRng);
-        let tmp = TempDir::new().unwrap();
-        let (bin, sig_path) = write_pair(&tmp, b"body", b"too-short");
-        assert!(verify_signature(&sk.verifying_key(), &bin, &sig_path).is_err());
+        let archive = tmp.path().join("artifact.tar.gz");
+        std::fs::write(&archive, b"bytes").unwrap();
+        let err = verify_provenance_with(
+            "wayland-core-no-such-gh-binary-xyz",
+            &archive,
+            "FerroxLabs/wayland-core",
+        )
+        .await
+        .expect_err("missing gh must error, not pass");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("GitHub CLI"), "got: {msg}");
     }
 
     /// Mockito round-trip: fetch_latest_release_from_url against a fake
@@ -455,10 +565,8 @@ mod tests {
         let body = serde_json::json!({
             "tag_name": "v0.9.0-wayland-base",
             "assets": [
-                {"name": "wayland-core-x86_64-unknown-linux-gnu",
-                 "browser_download_url": "https://example.test/bin"},
-                {"name": "wayland-core-x86_64-unknown-linux-gnu.sig",
-                 "browser_download_url": "https://example.test/bin.sig"}
+                {"name": "wayland-core-v0.9.0-x86_64-unknown-linux-gnu.tar.gz",
+                 "browser_download_url": "https://example.test/archive"}
             ]
         });
         let mock = server
@@ -475,10 +583,10 @@ mod tests {
         let release = fetch_latest_release_from_url(&url).await.unwrap().unwrap();
         mock.assert_async().await;
         assert_eq!(release.version(), "0.9.0");
-        assert_eq!(release.assets.len(), 2);
+        assert_eq!(release.assets.len(), 1);
         assert_eq!(
             release.assets[0].name,
-            "wayland-core-x86_64-unknown-linux-gnu"
+            "wayland-core-v0.9.0-x86_64-unknown-linux-gnu.tar.gz"
         );
     }
 
@@ -516,44 +624,5 @@ mod tests {
         let result = fetch_latest_release_from_url(&url).await;
         mock.assert_async().await;
         assert!(result.is_err(), "non-404 error should return Err");
-    }
-
-    /// Smoke: the const placeholder pubkey decodes but is all-zero. It
-    /// MUST be rejected by ed25519 verification (zero point has no
-    /// matching signatures for normal release payloads). This guards
-    /// against a release where the placeholder ships unrotated — the
-    /// CLI will fail-closed.
-    #[test]
-    fn placeholder_pubkey_decodes() {
-        let vk = parse_pubkey_b64(MARKETPLACE_PUBKEY_B64).unwrap();
-        // All-zero is a valid (if degenerate) ed25519 point; the load
-        // succeeds, but any non-trivial signed payload will fail to
-        // verify against it. We assert the decode succeeds and the key
-        // bytes are zero.
-        assert!(vk.as_bytes().iter().all(|b| *b == 0));
-    }
-
-    #[test]
-    fn load_pinned_pubkey_uses_env_override() {
-        use base64::Engine;
-        let sk = SigningKey::generate(&mut OsRng);
-        let b64 = base64::engine::general_purpose::STANDARD.encode(sk.verifying_key().as_bytes());
-        // SAFETY: tests run serial within a process; set + read + unset
-        // around a single call.
-        // SAFETY (env): single-threaded for the duration of this test
-        // body. We restore the original value if present.
-        let original = std::env::var(ENV_PUBKEY_B64).ok();
-        // SAFETY: setting env vars is unsafe in newer Rust editions.
-        unsafe {
-            std::env::set_var(ENV_PUBKEY_B64, &b64);
-        }
-        let loaded = load_pinned_pubkey().unwrap();
-        assert_eq!(loaded.as_bytes(), sk.verifying_key().as_bytes());
-        unsafe {
-            match original {
-                Some(v) => std::env::set_var(ENV_PUBKEY_B64, v),
-                None => std::env::remove_var(ENV_PUBKEY_B64),
-            }
-        }
     }
 }

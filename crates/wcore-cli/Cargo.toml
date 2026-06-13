@@ -186,18 +186,21 @@ wcore-egress = { workspace = true, optional = true }
 ed25519-dalek = { workspace = true }
 sha2          = { workspace = true }
 
-# v0.8.1 U9: `wayland-core self-update` deps.
-# - `base64` decodes the pinned marketplace pubkey + env override.
+# `wayland-core self-update` deps (keyless Sigstore provenance via gh; R16).
 # - `self_replace` swaps the running binary across POSIX (rename) and
 #   Windows (MoveFileExW + the running-exe-lock dance).
 # - `futures-util` streams reqwest response bytes into a file in
 #   bounded chunks (otherwise the full release tarball would buffer).
 # - `tempfile` already a dev-dep; promoted to a regular dep so the
 #   download path can stage artifacts in a scratch dir.
-base64       = { workspace = true }
+# - `tar`/`flate2`/`zip` extract the verified release archive
+#   (.tar.gz on macOS/Linux, .zip on Windows) before the swap.
 self-replace = "1"
 futures-util = "0.3"
 tempfile     = { workspace = true }
+tar          = { workspace = true }
+flate2       = { workspace = true }
+zip          = { workspace = true }
 # v0.9.0 W4 E1: `/auth google-meet` opens the authorize URL in the
 # user's default browser via `open::that_detached`.
 open         = { workspace = true }

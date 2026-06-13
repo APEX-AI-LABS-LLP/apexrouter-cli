@@ -29,10 +29,33 @@ from conventional-commit messages on `main`:
    - Calls the `Release` workflow via `workflow_call`.
 5. The `Release` workflow builds `wayland-core` for six targets, packages each
    as `wayland-core-vX.Y.Z-<target>.{tar.gz,zip}`, generates
-   `wayland-core-checksums.txt`, and uploads all artifacts to the GitHub
-   Release created in step 4.
+   `wayland-core-checksums.txt`, mints a **keyless Sigstore build-provenance
+   attestation** for each archive (`actions/attest-build-provenance`), and
+   uploads all artifacts to the GitHub Release created in step 4.
 6. The app's `scripts/prepareWaylandCore.js` downloads the asset matching its
    host platform from `https://github.com/FerroxLabs/wayland-core/releases/`.
+7. `publish-npm` publishes `@ferroxlabs/wayland-core` (+ platform packages)
+   with `npm publish --provenance`, emitting a transparency-logged provenance
+   statement per package.
+
+## Signing & provenance (keyless)
+
+There is **no long-lived release signing key to manage.** Both distribution
+channels are signed keylessly via GitHub OIDC + Sigstore:
+
+- **GitHub release archives** — `actions/attest-build-provenance` binds each
+  archive to the workflow that built it (SLSA provenance, logged in the public
+  Sigstore transparency log). Requires `id-token: write` + `attestations: write`
+  on the `github-release` job (already set). Public repo only.
+- **npm packages** — `npm publish --provenance` under `id-token: write`. The
+  package `repository.url` **must** case-match the GitHub slug
+  (`FerroxLabs/wayland-core`); npm 422s on a mismatch (enforced in
+  `npm/generate.mjs`).
+
+`wayland-core self-update` verifies the archive's attestation with
+`gh attestation verify` before installing, and **fails closed** if `gh` is
+absent (it does not skip verification). There is nothing to rotate; deleting or
+rolling a key is not part of a release cut.
 
 Targets built:
 
