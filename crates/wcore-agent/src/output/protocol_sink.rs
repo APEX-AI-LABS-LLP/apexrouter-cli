@@ -753,6 +753,33 @@ impl OutputSink for ProtocolSink {
         });
     }
 
+    /// ForgeFlows-Live: emit `ProtocolEvent::WorkflowStarted` when the sink
+    /// was configured with `with_sub_agent_traces(true)`. Shares the
+    /// `sub_agent_traces` gate with `emit_sub_agent_event` so hosts that
+    /// haven't opted in stay undisturbed per the W0 host-decoder contract.
+    fn emit_workflow_started(&self, workflow_id: &str, name: &str, node_count: usize) {
+        if !self.sub_agent_traces_enabled {
+            return;
+        }
+        let _ = self.writer.emit(&ProtocolEvent::WorkflowStarted {
+            workflow_id: workflow_id.to_string(),
+            name: name.to_string(),
+            node_count,
+        });
+    }
+
+    /// ForgeFlows-Live: emit `ProtocolEvent::WorkflowFinished` under the
+    /// same `sub_agent_traces` gate as `emit_workflow_started`.
+    fn emit_workflow_finished(&self, workflow_id: &str, succeeded: bool) {
+        if !self.sub_agent_traces_enabled {
+            return;
+        }
+        let _ = self.writer.emit(&ProtocolEvent::WorkflowFinished {
+            workflow_id: workflow_id.to_string(),
+            succeeded,
+        });
+    }
+
     /// W6 F7. Emits `ProtocolEvent::SessionCost` when
     /// `advertised.cost_attribution = true`. Single source of truth: there
     /// is no parallel sink-builder flag; bootstrap flips the advertised

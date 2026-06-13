@@ -338,6 +338,21 @@ impl OutputSink for ChannelSink {
         });
     }
 
+    fn emit_workflow_started(&self, workflow_id: &str, name: &str, node_count: usize) {
+        self.send(ProtocolEvent::WorkflowStarted {
+            workflow_id: workflow_id.to_string(),
+            name: name.to_string(),
+            node_count,
+        });
+    }
+
+    fn emit_workflow_finished(&self, workflow_id: &str, succeeded: bool) {
+        self.send(ProtocolEvent::WorkflowFinished {
+            workflow_id: workflow_id.to_string(),
+            succeeded,
+        });
+    }
+
     fn emit_session_cost(&self, session_id: &str, cost_payload: &serde_json::Value) {
         let total_cost_usd = cost_payload
             .get("total_cost_usd")

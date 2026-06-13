@@ -586,6 +586,21 @@ fn apply_event_inner(app: &mut App, event: ProtocolEvent) {
             apply_sub_agent_event(app, parent_call_id, agent_name, inner);
         }
 
+        // ── Workflows (ForgeFlows-Live lifecycle) ────────────────────
+        ProtocolEvent::WorkflowStarted { name, .. } => {
+            // Find-or-create the single MVP workflow group by the SAME key
+            // the `"workflow:<node_id>"` sub-agent fold uses, so a
+            // WorkflowStarted that lands before OR after the first node
+            // event correlates onto one `WorkflowView`. Set the display name
+            // from the event, replacing the default "Workflow".
+            let idx = ensure_workflow_group(app);
+            app.workflows[idx].name = name;
+        }
+        ProtocolEvent::WorkflowFinished { succeeded, .. } => {
+            let idx = ensure_workflow_group(app);
+            app.workflows[idx].finished = Some(succeeded);
+        }
+
         // ── Config / context / session ───────────────────────────────
         ProtocolEvent::ConfigChanged { capabilities } => {
             app.config.memory_enabled = capabilities.non_destructive_compact;
@@ -1608,6 +1623,30 @@ fn push_feed_line(view: &mut SubAgentView, text: &str) {
     }
 }
 
+/// ForgeFlows-Live — find-or-create the single MVP workflow group, returning
+/// its index in `app.workflows`. Both the `"workflow:<node_id>"` sub-agent
+/// fold and the `WorkflowStarted`/`WorkflowFinished` lifecycle arms share
+/// this so a group created by either path correlates onto one
+/// `WorkflowView`, regardless of which event arrives first. A natural
+/// per-run key can split concurrent workflows later without changing the
+/// call sites.
+fn ensure_workflow_group(app: &mut App) -> usize {
+    // MVP grouping key: a single workflow group.
+    const GROUP_KEY: &str = "workflow";
+    match app.workflows.iter().position(|w| w.key == GROUP_KEY) {
+        Some(i) => i,
+        None => {
+            app.workflows.push(WorkflowView {
+                key: GROUP_KEY.to_string(),
+                name: "Workflow".to_string(),
+                nodes: Vec::new(),
+                finished: None,
+            });
+            app.workflows.len() - 1
+        }
+    }
+}
+
 /// ForgeFlows-Live Phase 2 — fold a `"workflow:<node_id>"`-prefixed inner
 /// event into the Workflows-tab view. Find-or-create the single workflow
 /// group (MVP key `"workflow"`), then find-or-create the node by
@@ -1625,21 +1664,7 @@ fn apply_workflow_node_event(
     kind: &str,
     inner: &serde_json::Value,
 ) {
-    // MVP grouping key: a single workflow group. A natural per-run key can
-    // split concurrent workflows later without changing this shape.
-    const GROUP_KEY: &str = "workflow";
-
-    let wf_idx = match app.workflows.iter().position(|w| w.key == GROUP_KEY) {
-        Some(i) => i,
-        None => {
-            app.workflows.push(WorkflowView {
-                key: GROUP_KEY.to_string(),
-                name: "Workflow".to_string(),
-                nodes: Vec::new(),
-            });
-            app.workflows.len() - 1
-        }
-    };
+    let wf_idx = ensure_workflow_group(app);
     let workflow = &mut app.workflows[wf_idx];
 
     let node_idx = match workflow.nodes.iter().position(|n| n.node_id == node_id) {

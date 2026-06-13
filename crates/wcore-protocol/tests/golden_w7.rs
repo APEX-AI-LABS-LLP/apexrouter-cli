@@ -21,6 +21,40 @@ fn golden_sub_agent_event_w7() {
 }
 
 #[test]
+fn golden_workflow_started() {
+    let event = ProtocolEvent::WorkflowStarted {
+        workflow_id: "audit-run".into(),
+        name: "Audit".into(),
+        node_count: 3,
+    };
+    let got = serde_json::to_value(&event).unwrap();
+    assert_eq!(got["type"], "workflow_started");
+    assert_eq!(got["workflow_id"], "audit-run");
+    assert_eq!(got["name"], "Audit");
+    assert_eq!(got["node_count"], 3);
+}
+
+#[test]
+fn golden_workflow_finished() {
+    let event = ProtocolEvent::WorkflowFinished {
+        workflow_id: "audit-run".into(),
+        succeeded: true,
+    };
+    let got = serde_json::to_value(&event).unwrap();
+    assert_eq!(got["type"], "workflow_finished");
+    assert_eq!(got["workflow_id"], "audit-run");
+    assert_eq!(got["succeeded"], true);
+
+    // Failure variant carries succeeded:false.
+    let failed = ProtocolEvent::WorkflowFinished {
+        workflow_id: "audit-run".into(),
+        succeeded: false,
+    };
+    let got = serde_json::to_value(&failed).unwrap();
+    assert_eq!(got["succeeded"], false);
+}
+
+#[test]
 fn golden_tool_chunk_w7() {
     let event = ProtocolEvent::ToolChunk {
         msg_id: "m-1".into(),

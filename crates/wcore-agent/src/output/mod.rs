@@ -82,6 +82,16 @@ pub trait OutputSink: Send + Sync {
     ) {
     }
 
+    /// ForgeFlows-Live: a workflow run started. Default no-op; only
+    /// `ProtocolSink` configured with `with_sub_agent_traces(true)` emits
+    /// the `WorkflowStarted` variant (same gate as `emit_sub_agent_event`).
+    fn emit_workflow_started(&self, _workflow_id: &str, _name: &str, _node_count: usize) {}
+
+    /// ForgeFlows-Live: a workflow run finished. Default no-op; only
+    /// `ProtocolSink` configured with `with_sub_agent_traces(true)` emits
+    /// the `WorkflowFinished` variant (same gate as `emit_sub_agent_event`).
+    fn emit_workflow_finished(&self, _workflow_id: &str, _succeeded: bool) {}
+
     /// W7 F4: emit a streaming chunk from a long-running tool. Default
     /// no-op; only `ProtocolSink` configured with
     /// `with_streaming_tools(true)` emits these.

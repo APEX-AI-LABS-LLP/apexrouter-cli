@@ -137,6 +137,33 @@ pub enum ProtocolEvent {
         agent_name: String,
         inner: Value,
     },
+    /// ForgeFlows-Live: a workflow (ForgeFlows / Dynamic Workflows) run
+    /// started. Emitted once, before the first node dispatches, so hosts
+    /// (the TUI Workflows tab and the external `wayland` desktop app) get a
+    /// clean lifecycle signal instead of inferring the run from the first
+    /// `workflow:<node_id>`-prefixed `SubAgentEvent`. `workflow_id` is a
+    /// stable correlation handle for the run; `name` is the author's display
+    /// name; `node_count` is the number of agent nodes the run will dispatch.
+    /// Rides the existing W0-reserved `capabilities.sub_agent_traces` flag
+    /// (the same observability surface as `SubAgentEvent`) — no dedicated
+    /// capability is added. Hosts that don't recognise the `workflow_started`
+    /// `type` MUST drop it silently per the W0 host decoder contract.
+    WorkflowStarted {
+        workflow_id: String,
+        name: String,
+        node_count: usize,
+    },
+    /// ForgeFlows-Live: a workflow run finished. Emitted once, after the run
+    /// completes (success or failure), as the terminal bookend to
+    /// `WorkflowStarted`. `succeeded` is `true` only when the run produced
+    /// no errored stages. Rides the existing `capabilities.sub_agent_traces`
+    /// flag (no dedicated capability). Hosts that don't recognise the
+    /// `workflow_finished` `type` MUST drop it silently per the W0 host
+    /// decoder contract.
+    WorkflowFinished {
+        workflow_id: String,
+        succeeded: bool,
+    },
     /// W7: F4 streaming tool-result chunk. Long-running tools (e.g.
     /// `Bash` on a multi-minute build) emit one of these per chunk of
     /// stdout/stderr while running, ahead of the final `ToolResult`.

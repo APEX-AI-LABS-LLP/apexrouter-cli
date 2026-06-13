@@ -930,10 +930,16 @@ pub enum SubAgentStatus {
 pub struct WorkflowView {
     /// Grouping key — the `"workflow"` prefix group the nodes share.
     pub key: String,
-    /// Display name; derived from node names, defaults to `"Workflow"`.
+    /// Display name; set from the `WorkflowStarted` event when one arrives,
+    /// otherwise defaults to `"Workflow"`.
     pub name: String,
     /// The workflow's nodes, in first-seen order.
     pub nodes: Vec<WorkflowNodeView>,
+    /// Run-level outcome from the `WorkflowFinished` event: `None` while
+    /// running, `Some(true)` done, `Some(false)` failed. Distinct from the
+    /// per-node tally — a run can finish failed even if every node it
+    /// dispatched reported Done (e.g. a missing `over:` pipeline key).
+    pub finished: Option<bool>,
 }
 
 /// One node within a [`WorkflowView`] — a single child agent the workflow

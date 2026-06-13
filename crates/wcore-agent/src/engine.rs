@@ -262,13 +262,46 @@ fn run_workflow_owned(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = RunOwnedOutput> + Send>> {
     // Concrete boxed `Send` return type (see `synthesize_workflow_owned`).
     Box::pin(async move {
+        // ForgeFlows-Live: derive the lifecycle-event fields from the plan.
+        // `run_workflow_owned` has no turn/msg id in scope, so the stable
+        // correlation handle is the plan's own display name (the meta.name
+        // the author declared); the TUI groups runs under one MVP key today,
+        // so the name doubles as the human-readable id. `node_count` counts
+        // the AgentCall nodes — the units the runner actually dispatches and
+        // what the Workflows tab tallies (End/PassThrough/Pipeline-placeholder
+        // nodes are graph plumbing, not agents).
+        let workflow_id = plan.meta.name.clone();
+        let name = plan.meta.name.clone();
+        let node_count = plan
+            .graph
+            .nodes
+            .iter()
+            .filter(|(_, node)| matches!(node, crate::orchestration::graph::Node::AgentCall { .. }))
+            .count();
+
+        // ForgeFlows-Live: bookend the run with WorkflowStarted/Finished so
+        // hosts get a clean lifecycle signal instead of inferring it from the
+        // first `workflow:<node_id>` SubAgentEvent. Both ride the existing
+        // `sub_agent_traces` gate on the sink.
+        parent_output.emit_workflow_started(&workflow_id, &name, node_count);
+
         // ForgeFlows-Live Phase 1: wire the parent sink so the live (B6) path's
         // sub-agent events relay back as `SubAgentEvent`, matching the LLM-facing
         // `WorkflowTool` surface.
         let run = crate::orchestration::workflow::runner::WorkflowRunner::new(&spawner)
-            .with_parent_output(parent_output)
+            .with_parent_output(std::sync::Arc::clone(&parent_output))
             .run(&plan, initial)
             .await;
+
+        // `succeeded` mirrors the caller's `is_error` definition (a hard `Err`
+        // OR an `Ok` run that still carries a failed stage both count as
+        // failure — e.g. a no-barrier pipeline over a missing `over:` key).
+        let succeeded = match &run {
+            Ok(result) => AgentEngine::errored_stage_ids(&result.stage_results).is_empty(),
+            Err(_) => false,
+        };
+        parent_output.emit_workflow_finished(&workflow_id, succeeded);
+
         (plan, run)
     })
 }

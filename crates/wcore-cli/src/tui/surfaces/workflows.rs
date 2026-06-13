@@ -368,14 +368,23 @@ fn render_workflow_card(
     theme: &Theme,
 ) {
     let (running, done, failed) = tally(workflow);
-    // The card accent: orange while any node runs, red on a failure, green
-    // when every node is done.
-    let accent = if running > 0 {
-        theme.orange
-    } else if failed > 0 {
-        theme.error
-    } else {
-        theme.success
+    // The card accent: a run-level `WorkflowFinished` verdict wins when
+    // present (a run can finish failed even with every node Done — e.g. a
+    // missing `over:` pipeline key); otherwise fall back to the per-node
+    // tally — orange while any node runs, red on a node failure, green when
+    // every node is done.
+    let accent = match workflow.finished {
+        Some(true) => theme.success,
+        Some(false) => theme.error,
+        None => {
+            if running > 0 {
+                theme.orange
+            } else if failed > 0 {
+                theme.error
+            } else {
+                theme.success
+            }
+        }
     };
 
     let border_color = if is_selected { accent } else { theme.border };
@@ -392,8 +401,8 @@ fn render_workflow_card(
 
     let bg = Style::default().bg(theme.surface);
 
-    // Row 1: ● name   N nodes
-    let header = Line::from(vec![
+    // Row 1: ● name   N nodes   [DONE|FAILED]
+    let mut header_spans = vec![
         Span::styled("● ", bg.fg(accent)),
         Span::styled(
             workflow.name.clone(),
@@ -404,7 +413,18 @@ fn render_workflow_card(
             format!("{} nodes", workflow.nodes.len()),
             bg.fg(theme.text_muted),
         ),
-    ]);
+    ];
+    // Surface the run-level `WorkflowFinished` verdict, when one arrived, so
+    // the list shows a workflow finished even if it dispatched no failing
+    // node.
+    if let Some(succeeded) = workflow.finished {
+        header_spans.push(Span::styled("   ", bg));
+        header_spans.push(Span::styled(
+            if succeeded { "DONE" } else { "FAILED" },
+            bg.fg(accent).add_modifier(Modifier::BOLD),
+        ));
+    }
+    let header = Line::from(header_spans);
 
     // Row 2: the running/done/failed tally.
     let mut tally_spans = vec![
@@ -661,6 +681,104 @@ mod tests {
             "still in drill view after Esc:\n{back}"
         );
         assert!(back.contains("WORKFLOWS"), "not back on list bar:\n{back}");
+    }
+
+    #[test]
+    fn workflow_started_sets_name_and_finished_marks_done() {
+        use wcore_protocol::events::ProtocolEvent;
+
+        let mut app = App::new();
+        // WorkflowStarted replaces the default "Workflow" name with "Audit".
+        apply_event(
+            &mut app,
+            ProtocolEvent::WorkflowStarted {
+                workflow_id: "audit-run".into(),
+                name: "Audit".into(),
+                node_count: 2,
+            },
+        );
+        assert_eq!(app.workflows.len(), 1, "one workflow group expected");
+        assert_eq!(app.workflows[0].name, "Audit");
+        assert_eq!(app.workflows[0].finished, None, "still running");
+
+        // The rendered LIST surface shows the event-supplied name + DONE once
+        // finished.
+        let mut surface = WorkflowsSurface::new();
+        let running = render(&mut surface, &app, 100, 24);
+        assert!(running.contains("Audit"), "name not rendered:\n{running}");
+        assert!(
+            !running.contains("DONE"),
+            "DONE shown before finish:\n{running}"
+        );
+
+        // WorkflowFinished{succeeded:true} marks the run done — correlates onto
+        // the SAME group created by WorkflowStarted.
+        apply_event(
+            &mut app,
+            ProtocolEvent::WorkflowFinished {
+                workflow_id: "audit-run".into(),
+                succeeded: true,
+            },
+        );
+        assert_eq!(app.workflows.len(), 1, "no second group created");
+        assert_eq!(app.workflows[0].finished, Some(true));
+
+        let done = render(&mut surface, &app, 100, 24);
+        assert!(done.contains("Audit"), "name lost after finish:\n{done}");
+        assert!(done.contains("DONE"), "DONE not rendered:\n{done}");
+    }
+
+    #[test]
+    fn workflow_finished_failed_renders_failed_at_run_level() {
+        use wcore_protocol::events::ProtocolEvent;
+
+        // A run can finish FAILED even with no failing node dispatched — the
+        // run-level verdict must render regardless of the per-node tally.
+        let mut app = App::new();
+        apply_event(
+            &mut app,
+            ProtocolEvent::WorkflowStarted {
+                workflow_id: "wf".into(),
+                name: "Pipeline".into(),
+                node_count: 1,
+            },
+        );
+        apply_event(
+            &mut app,
+            ProtocolEvent::WorkflowFinished {
+                workflow_id: "wf".into(),
+                succeeded: false,
+            },
+        );
+        assert_eq!(app.workflows[0].finished, Some(false));
+
+        let mut surface = WorkflowsSurface::new();
+        let out = render(&mut surface, &app, 100, 24);
+        assert!(out.contains("FAILED"), "FAILED not rendered:\n{out}");
+    }
+
+    #[test]
+    fn workflow_started_after_node_events_correlates_onto_one_group() {
+        // Order-tolerance: node events that arrive BEFORE WorkflowStarted
+        // create the group; the later WorkflowStarted must rename that SAME
+        // group, not spawn a second one.
+        let mut app = app_from_fixture(); // creates the "workflow" group via nodes
+        assert_eq!(app.workflows.len(), 1);
+        assert_eq!(app.workflows[0].name, "Workflow", "default name pre-start");
+
+        use wcore_protocol::events::ProtocolEvent;
+        apply_event(
+            &mut app,
+            ProtocolEvent::WorkflowStarted {
+                workflow_id: "late".into(),
+                name: "Late Start".into(),
+                node_count: 2,
+            },
+        );
+        assert_eq!(app.workflows.len(), 1, "must not create a 2nd group");
+        assert_eq!(app.workflows[0].name, "Late Start");
+        // The nodes folded earlier survive the rename.
+        assert_eq!(app.workflows[0].nodes.len(), 2);
     }
 
     #[test]
