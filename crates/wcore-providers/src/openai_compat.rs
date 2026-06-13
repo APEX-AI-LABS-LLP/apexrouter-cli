@@ -32,11 +32,11 @@ pub fn wants_max_completion_tokens(model: &str) -> bool {
     is_o_series(&m) || is_gpt5(&m)
 }
 
-/// True when the model accepts a `reasoning_effort` field. Mirrors
-/// `wants_max_completion_tokens` — same set of families.
+/// True when the model accepts a `reasoning_effort` field. R78: forwards to the
+/// single canonical predicate in `wcore-config` instead of re-implementing the
+/// prefix logic here — the two copies could otherwise silently drift.
 pub fn accepts_reasoning_effort(model: &str) -> bool {
-    let m = lower(model);
-    is_o_series(&m) || is_gpt5(&m)
+    wcore_config::config::openai_model_accepts_effort(model)
 }
 
 /// True when the model must be served via the OpenAI **Responses API**

@@ -379,7 +379,11 @@ impl OpenAIProvider {
 
         // Gate `reasoning_effort` on the model family. gpt-4o (and other
         // classic chat families) 400 on the field; only o1*/o3*/gpt-5*
-        // accept it.
+        // accept it. This MUST stay per-request: one OpenAIProvider serves
+        // many models in a session, so `self.compat.supports_effort` (a
+        // provider-level flag) cannot decide it. R78 dedups the predicate —
+        // `accepts_reasoning_effort` now forwards to the single canonical copy
+        // in `wcore-config`.
         if let Some(effort) = &request.reasoning_effort
             && openai_compat::accepts_reasoning_effort(&request.model)
         {

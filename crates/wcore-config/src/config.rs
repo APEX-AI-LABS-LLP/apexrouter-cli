@@ -979,11 +979,12 @@ impl Default for ProviderType {
 }
 
 /// The default model string used when neither the CLI, provider config, nor
-/// F-088: mirror of `wcore_providers::openai_compat::accepts_reasoning_effort`
-/// inlined here to avoid a `wcore-config → wcore-providers` dep cycle.
-/// True when the model name belongs to an OpenAI reasoning family that accepts
-/// the `reasoning_effort` request field (`o1*`, `o3*`, `gpt-5*`).
-pub(crate) fn openai_model_accepts_effort(model: &str) -> bool {
+/// Canonical predicate (R78): the single source of truth for "does this OpenAI
+/// model accept the `reasoning_effort` request field" (`o1*`, `o3*`, `gpt-5*`).
+/// It lives here, in the lower crate, because `wcore-providers` depends on
+/// `wcore-config` (not the reverse); `openai_compat::accepts_reasoning_effort`
+/// now forwards to this instead of duplicating the prefix logic.
+pub fn openai_model_accepts_effort(model: &str) -> bool {
     let m = model.to_ascii_lowercase();
     // o-series: o1, o3, o1-mini, o3-mini, o4 (future), …
     let is_o_series = {
