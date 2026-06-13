@@ -15,14 +15,27 @@
 //!
 //! ## Concurrency model
 //!
-//! Dispatch is `await`ed inline in the receive loop, so channel turns are
-//! naturally SERIALIZED — one turn runs to completion (and its reply is
-//! sent) before the next inbound event is processed. This is intentional:
-//! it matches the single-engine constraint of the future real dispatcher
-//! and keeps per-conversation ordering deterministic. The cost is that a
-//! slow turn back-pressures the broadcast (which is bounded), so a long
-//! turn can cause `Lagged` for very bursty channels — that is logged and
-//! tolerated, not fatal.
+//! The broadcast receive loop does ONLY admission — classify / dedup /
+//! access / session-key (all in-memory, O(µs)) — then hands each admitted
+//! event to a per-session worker over a bounded FIFO and immediately moves
+//! on. Because the loop never `await`s a turn, a slow multi-minute turn can
+//! no longer back-pressure the broadcast: the drain keeps up with producers
+//! and a busy session does NOT starve other sessions (no cross-session
+//! head-of-line blocking, and no broadcast `Lagged` caused by turn latency).
+//!
+//! Each session key gets exactly one worker task that drives its turns
+//! SERIALLY — one turn completes and replies before the next for that
+//! session — so per-conversation ordering stays deterministic and matches
+//! the engine's per-session single-turn constraint. Workers for distinct
+//! sessions run concurrently.
+//!
+//! Two bounds keep the decoupling honest. The per-session FIFO is bounded
+//! ([`SESSION_FIFO_CAP`]): if one session receives turns faster than it can
+//! run them, the inbound beyond the cap is dropped with a warning rather
+//! than blocking the drain loop (blocking would reintroduce the very defect
+//! this design removes). The live worker count is bounded
+//! ([`MAX_SESSION_WORKERS`]) to cap task proliferation from a flood of
+//! distinct conversation ids.
 //!
 //! ## Subscribe-before-start ordering
 //!
@@ -37,11 +50,35 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use wcore_channels::{
-    ChannelEvent, ChannelManager, DedupeCache, InboundPolicy, IncomingMessage, OutgoingMessage,
-    TurnAdmission, evaluate,
+    AckMode, ChannelEvent, ChannelManager, DedupeCache, InboundPolicy, IncomingMessage,
+    OutgoingMessage, TurnAdmission, evaluate,
 };
+
+/// Depth of each per-session FIFO. Bounds how far one session may fall
+/// behind (turns are multi-minute) before the oldest-beyond-cap inbound is
+/// dropped rather than growing memory unboundedly or — fatally — blocking
+/// the broadcast drain loop.
+const SESSION_FIFO_CAP: usize = 64;
+
+/// Maximum number of concurrently live session workers. Caps task
+/// proliferation from a flood of distinct conversation ids; a new session
+/// beyond this — after idle eviction has reclaimed what it can — is dropped
+/// with a warning. Mirrors the engine pool's intent to bound per-conversation
+/// resource growth.
+const MAX_SESSION_WORKERS: usize = 1000;
+
+/// A worker idle (no admitted event) at least this long is eligible for
+/// eviction when a new session needs a slot. Without this the worker map
+/// would only ever grow — a `Sender` held in the map keeps its worker parked
+/// on `recv()` forever, so workers never exit on their own, and a long-lived
+/// bot serving many distinct conversations would permanently hit
+/// [`MAX_SESSION_WORKERS`] and silently drop every new session. Eviction
+/// drops the entry's `Sender`, the worker drains any remaining queue and
+/// exits, and the session's engine state still persists in the dispatcher's
+/// per-key engine pool — so a later message simply respawns a fresh worker.
+const WORKER_IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Pick the outbound reply target for a turn's reply.
 ///
@@ -152,6 +189,11 @@ impl InboundSubscriber {
         let mut dedupe = self.dedupe;
 
         tokio::spawn(async move {
+            // Per-session FIFO workers, owned solely by this drain task (no
+            // lock, single-threaded ownership). A worker exists iff an event
+            // has been admitted for its session key and it has not been torn
+            // down. Dropping/removing its `Sender` closes the worker.
+            let mut workers: HashMap<String, SessionWorker> = HashMap::new();
             loop {
                 match rx.recv().await {
                     Ok(tagged) => {
@@ -195,92 +237,24 @@ impl InboundSubscriber {
                                     }
                                 };
 
-                                // Ack state machine (best-effort, never
-                                // fatal): 👀 on receipt, a typing keepalive
-                                // while the turn runs, then ✅/❌ on
-                                // completion — gated by the channel's ack mode.
-                                let ack = policy.ack;
-                                if ack.reactions() {
-                                    let g = manager.read().await;
-                                    if let Err(e) = g
-                                        .react_on(
-                                            &tagged.channel_name,
-                                            &msg.conversation_id,
-                                            &msg.id,
-                                            "👀",
-                                        )
-                                        .await
-                                    {
-                                        tracing::debug!(
-                                            channel = %tagged.channel_name,
-                                            error = %e,
-                                            "ack 'seen' reaction failed (non-fatal)"
-                                        );
-                                    }
-                                }
-                                // Abort-on-drop guard: the keepalive is killed
-                                // the instant the turn completes AND if this
-                                // subscriber task is itself cancelled
-                                // mid-dispatch (a bare JoinHandle drop does NOT
-                                // abort the task; the guard's Drop does).
-                                let _typing_guard = ack.typing().then(|| {
-                                    AbortOnDrop(spawn_typing_keepalive(
-                                        std::sync::Arc::clone(&manager),
-                                        tagged.channel_name.clone(),
-                                        msg.conversation_id.clone(),
-                                    ))
-                                });
-
-                                let dispatch_result = dispatcher
-                                    .dispatch(&session_key, &tagged.channel_name, &msg)
-                                    .await;
-
-                                drop(_typing_guard);
-                                if ack.reactions() {
-                                    let emoji = if dispatch_result.is_ok() {
-                                        "✅"
-                                    } else {
-                                        "❌"
-                                    };
-                                    let g = manager.read().await;
-                                    let _ = g
-                                        .react_on(
-                                            &tagged.channel_name,
-                                            &msg.conversation_id,
-                                            &msg.id,
-                                            emoji,
-                                        )
-                                        .await;
-                                }
-
-                                match dispatch_result {
-                                    Ok(Some(reply)) => {
-                                        let outgoing = OutgoingMessage {
-                                            conversation_id: msg.conversation_id.clone(),
-                                            text: reply,
-                                            reply_to: outbound_reply_target(&msg),
-                                            attachments: Vec::new(),
-                                        };
-                                        let guard = manager.read().await;
-                                        if let Err(e) =
-                                            guard.send_to(&tagged.channel_name, outgoing).await
-                                        {
-                                            tracing::warn!(
-                                                channel = %tagged.channel_name,
-                                                error = %e,
-                                                "failed to send inbound reply"
-                                            );
-                                        }
-                                        drop(guard);
-                                    }
-                                    Ok(None) => {
-                                        // Turn produced no reply; nothing to
-                                        // send.
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(error = %e, "inbound turn dispatch failed");
-                                    }
-                                }
+                                // Hand the admitted event to its per-session
+                                // worker over a bounded FIFO and move on. The
+                                // turn — ack machine + dispatch + reply — runs
+                                // in the worker (see `run_turn`), NEVER here:
+                                // awaiting it inline is exactly the defect this
+                                // design removes.
+                                let ev = AdmittedEvent {
+                                    channel_name: tagged.channel_name.clone(),
+                                    msg,
+                                    ack: policy.ack,
+                                };
+                                enqueue_to_worker(
+                                    &mut workers,
+                                    session_key,
+                                    ev,
+                                    &manager,
+                                    &dispatcher,
+                                );
                             }
                             TurnAdmission::ObserveOnly => {
                                 tracing::debug!(
@@ -312,17 +286,246 @@ impl InboundSubscriber {
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "inbound subscriber lagged");
+                        // Producers outran the drain loop and the bounded
+                        // broadcast overwrote `n` events before admission.
+                        // With dispatch decoupled this should be rare (the
+                        // loop only does O(µs) admission) — if it persists,
+                        // producers are flooding faster than classify/dedup
+                        // can run, not "a turn is slow". Surfaced under a
+                        // distinct target so it can be alerted on.
+                        tracing::warn!(
+                            target: "wcore_agent::channel_inbound",
+                            skipped = n,
+                            "inbound broadcast lagged; events dropped before admission"
+                        );
                         continue;
                     }
                     Err(broadcast::error::RecvError::Closed) => {
                         // Manager dropped its sender — no more events will
-                        // ever arrive. End the task.
+                        // ever arrive. Abort in-flight workers (turns are
+                        // multi-minute; we do not wait them out on shutdown)
+                        // and end the task. Dropping `workers` would also
+                        // close each FIFO, but an explicit abort stops the
+                        // current turn promptly.
+                        for (_, w) in workers.drain() {
+                            w.handle.abort();
+                        }
                         break;
                     }
                 }
             }
         })
+    }
+}
+
+/// One admitted inbound event handed from the broadcast drain loop to the
+/// per-session worker that owns its turn. Carries everything the ack +
+/// dispatch + reply machine needs; the session key is the worker's map key
+/// (and is passed to the worker separately), so it is not repeated here.
+struct AdmittedEvent {
+    channel_name: String,
+    msg: IncomingMessage,
+    ack: AckMode,
+}
+
+/// A per-session worker: a bounded FIFO `tx` feeding a spawned task that
+/// drives turns SERIALLY for one session key. The drain loop owns one of
+/// these per live session; dropping/removing it closes the FIFO and the
+/// worker exits once its queue is empty.
+struct SessionWorker {
+    tx: mpsc::Sender<AdmittedEvent>,
+    handle: tokio::task::JoinHandle<()>,
+    /// When the most recent event was enqueued. Used for idle eviction so a
+    /// flood of distinct sessions cannot permanently exhaust the worker cap.
+    last_active: std::time::Instant,
+}
+
+/// Route an admitted event to its session worker, spawning one on first use.
+///
+/// This runs in the broadcast drain loop and must never block — every path
+/// either enqueues in O(µs) or drops with a warning. A full per-session FIFO
+/// drops the event (the session is already saturated with multi-minute
+/// turns); exceeding [`MAX_SESSION_WORKERS`] drops a brand-new session.
+fn enqueue_to_worker(
+    workers: &mut HashMap<String, SessionWorker>,
+    session_key: String,
+    ev: AdmittedEvent,
+    manager: &Arc<RwLock<ChannelManager>>,
+    dispatcher: &Arc<dyn TurnDispatcher>,
+) {
+    // Fast path: a live worker already exists for this session.
+    let ev = match workers.get_mut(&session_key) {
+        Some(worker) => match worker.tx.try_send(ev) {
+            Ok(()) => {
+                worker.last_active = std::time::Instant::now();
+                return;
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                tracing::warn!(
+                    target: "wcore_agent::channel_inbound",
+                    session_key = %session_key,
+                    dropped = 1,
+                    "per-session FIFO full; inbound message dropped"
+                );
+                return;
+            }
+            // The worker task ended (panicked, or torn down) and dropped its
+            // receiver. Reclaim the returned event, evict the dead entry, and
+            // fall through to respawn.
+            Err(mpsc::error::TrySendError::Closed(returned)) => {
+                workers.remove(&session_key);
+                returned
+            }
+        },
+        None => ev,
+    };
+
+    // No live worker for this session: we are about to spawn one. First
+    // reclaim slots held by exited or long-idle workers so a flood of
+    // distinct sessions cannot permanently exhaust the cap (the worker map
+    // would otherwise only grow).
+    prune_idle_workers(workers);
+
+    if workers.len() >= MAX_SESSION_WORKERS {
+        tracing::warn!(
+            target: "wcore_agent::channel_inbound",
+            session_key = %session_key,
+            live_workers = workers.len(),
+            "session worker cap reached; inbound message dropped"
+        );
+        return;
+    }
+
+    let (tx, rx) = mpsc::channel(SESSION_FIFO_CAP);
+    let handle = spawn_session_worker(
+        session_key.clone(),
+        rx,
+        Arc::clone(manager),
+        Arc::clone(dispatcher),
+    );
+    // The FIFO is fresh and we hold the only sender, so this can be neither
+    // Full nor Closed; the event is enqueued unconditionally.
+    let _ = tx.try_send(ev);
+    workers.insert(
+        session_key,
+        SessionWorker {
+            tx,
+            handle,
+            last_active: std::time::Instant::now(),
+        },
+    );
+}
+
+/// Remove workers that have exited (panicked / drained-and-closed) or been
+/// idle past [`WORKER_IDLE_TTL`]. Dropping an entry drops its `Sender`, which
+/// lets the worker drain any queued events and exit. Called only on the
+/// spawn-a-new-session path, so its O(n) scan does not run per event for
+/// already-live sessions. Eviction is safe: per-session turn ordering
+/// ultimately rests on the dispatcher's per-key engine mutex, and the
+/// session's engine state survives in that pool, so a later message for an
+/// evicted session simply respawns a fresh worker.
+fn prune_idle_workers(workers: &mut HashMap<String, SessionWorker>) {
+    workers.retain(|_, w| !w.handle.is_finished() && w.last_active.elapsed() < WORKER_IDLE_TTL);
+}
+
+/// Spawn the worker task for one session key. It consumes its FIFO in order,
+/// running each turn to completion (and reply) before the next, and exits
+/// when the FIFO closes (all senders dropped).
+fn spawn_session_worker(
+    session_key: String,
+    mut rx: mpsc::Receiver<AdmittedEvent>,
+    manager: Arc<RwLock<ChannelManager>>,
+    dispatcher: Arc<dyn TurnDispatcher>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            run_turn(&session_key, &ev, &manager, &dispatcher).await;
+        }
+    })
+}
+
+/// Drive one agent turn for an admitted event: the best-effort ack state
+/// machine (👀 on receipt → typing keepalive while running → ✅/❌ on
+/// completion, gated by the channel's [`AckMode`]) around the dispatch, then
+/// send any reply back through the originating channel. Runs inside the
+/// session worker, so a slow turn here never touches the broadcast drain loop.
+async fn run_turn(
+    session_key: &str,
+    ev: &AdmittedEvent,
+    manager: &Arc<RwLock<ChannelManager>>,
+    dispatcher: &Arc<dyn TurnDispatcher>,
+) {
+    let AdmittedEvent {
+        channel_name,
+        msg,
+        ack,
+    } = ev;
+    let ack = *ack;
+
+    if ack.reactions() {
+        let g = manager.read().await;
+        if let Err(e) = g
+            .react_on(channel_name, &msg.conversation_id, &msg.id, "👀")
+            .await
+        {
+            tracing::debug!(
+                channel = %channel_name,
+                error = %e,
+                "ack 'seen' reaction failed (non-fatal)"
+            );
+        }
+    }
+
+    // Abort-on-drop guard: the keepalive is killed the instant the turn
+    // completes AND if this worker task is itself cancelled mid-dispatch (a
+    // bare JoinHandle drop does NOT abort the task; the guard's Drop does).
+    let _typing_guard = ack.typing().then(|| {
+        AbortOnDrop(spawn_typing_keepalive(
+            Arc::clone(manager),
+            channel_name.clone(),
+            msg.conversation_id.clone(),
+        ))
+    });
+
+    let dispatch_result = dispatcher.dispatch(session_key, channel_name, msg).await;
+
+    drop(_typing_guard);
+    if ack.reactions() {
+        let emoji = if dispatch_result.is_ok() {
+            "✅"
+        } else {
+            "❌"
+        };
+        let g = manager.read().await;
+        let _ = g
+            .react_on(channel_name, &msg.conversation_id, &msg.id, emoji)
+            .await;
+    }
+
+    match dispatch_result {
+        Ok(Some(reply)) => {
+            let outgoing = OutgoingMessage {
+                conversation_id: msg.conversation_id.clone(),
+                text: reply,
+                reply_to: outbound_reply_target(msg),
+                attachments: Vec::new(),
+            };
+            let guard = manager.read().await;
+            if let Err(e) = guard.send_to(channel_name, outgoing).await {
+                tracing::warn!(
+                    channel = %channel_name,
+                    error = %e,
+                    "failed to send inbound reply"
+                );
+            }
+            drop(guard);
+        }
+        Ok(None) => {
+            // Turn produced no reply; nothing to send.
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "inbound turn dispatch failed");
+        }
     }
 }
 
@@ -497,6 +700,48 @@ mod tests {
         m.sender_id = "u1".into();
         m.chat_type = ChatType::Direct;
         m
+    }
+
+    /// Build a DM inbound with an explicit conversation id, so distinct
+    /// `conv` values yield distinct session keys (and thus distinct workers).
+    fn dm_conv(id: &str, conv: &str) -> IncomingMessage {
+        let mut m = IncomingMessage::new(id, conv, "alice", "ping", 0);
+        m.sender_id = "u1".into();
+        m.chat_type = ChatType::Direct;
+        m
+    }
+
+    /// Dispatcher that sleeps `delay` per call before counting it — models a
+    /// slow multi-minute turn. Returns `Ok(None)` (no reply) to keep the test
+    /// focused on dispatch admission, not outbound.
+    struct SlowDispatcher {
+        count: CallCount,
+        delay: Duration,
+    }
+
+    impl SlowDispatcher {
+        fn new(delay: Duration) -> (Self, CallCount) {
+            let count = Arc::new(AtomicUsize::new(0));
+            let d = Self {
+                count: Arc::clone(&count),
+                delay,
+            };
+            (d, count)
+        }
+    }
+
+    #[async_trait]
+    impl TurnDispatcher for SlowDispatcher {
+        async fn dispatch(
+            &self,
+            _session_key: &str,
+            _channel_name: &str,
+            _msg: &IncomingMessage,
+        ) -> anyhow::Result<Option<String>> {
+            tokio::time::sleep(self.delay).await;
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }
     }
 
     #[test]
@@ -690,6 +935,137 @@ mod tests {
 
         manager.write().await.stop_all().await.unwrap();
         handle.abort();
+    }
+
+    /// R13 regression: a slow turn must NOT cause inbound events to be
+    /// silently dropped by lagging the bounded broadcast.
+    ///
+    /// 300 distinct-session DMs are produced ~1ms apart while every dispatch
+    /// sleeps 50ms. Under the old inline design the receive loop consumed one
+    /// event per ~50ms, so the 256-slot broadcast overflowed within ~300ms
+    /// and `Lagged` silently discarded most of the 300. With dispatch
+    /// decoupled into per-session workers, the drain loop only does O(µs)
+    /// admission, keeps up with producers, and fans every session out to its
+    /// own worker — so all 300 are dispatched, none dropped.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn slow_turns_do_not_drop_inbound_via_broadcast_lag() {
+        const N: usize = 300;
+        // The assertion below is `dispatched == N`. Keep N strictly under the
+        // worker cap so a shortfall can ONLY mean broadcast-lag drops (the
+        // defect under test), never a worker-cap drop. Enforced at compile
+        // time so the invariant cannot silently rot.
+        const _: () = assert!(N < MAX_SESSION_WORKERS);
+
+        let mut policies = HashMap::new();
+        policies.insert("slack".to_string(), open_dm_policy());
+
+        // Distinct conversation ids => distinct session keys => N workers.
+        let mut q = VecDeque::new();
+        for i in 0..N {
+            q.push_back(dm_conv(&format!("m{i}"), &format!("c{i}")));
+        }
+
+        let (ch, _outbound) = CapturingChannel::new("slack", q);
+        // Produce far faster than any single turn runs.
+        let mgr = ChannelManager::new().with_poll_interval(Duration::from_millis(1));
+        let manager = Arc::new(RwLock::new(mgr));
+
+        let (dispatcher, count) = SlowDispatcher::new(Duration::from_millis(50));
+        let subscriber = InboundSubscriber::new(
+            Arc::clone(&manager),
+            Arc::new(dispatcher),
+            policies,
+            60_000,
+            4096,
+        );
+        let handle = subscriber.spawn().await;
+
+        {
+            let mut guard = manager.write().await;
+            guard.register(Box::new(ch)).await;
+            guard.start_all().await.unwrap();
+        }
+
+        // All N workers run their 50ms turn concurrently, so completion is
+        // bounded by production time + one turn, not N * 50ms. Generous slack.
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            if count.load(Ordering::SeqCst) >= N || std::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            N,
+            "every inbound must be dispatched; a shortfall means events were dropped by broadcast lag"
+        );
+
+        manager.write().await.stop_all().await.unwrap();
+        handle.abort();
+    }
+
+    /// R13: the worker map must self-heal so a long-lived bot serving many
+    /// distinct conversations cannot permanently exhaust the worker cap.
+    /// `prune_idle_workers` evicts exited and long-idle workers but keeps
+    /// recently-active ones.
+    #[tokio::test]
+    async fn prune_idle_workers_evicts_idle_and_finished_keeps_active() {
+        use std::time::Instant;
+
+        let mut workers: HashMap<String, SessionWorker> = HashMap::new();
+
+        // Active: recent activity, live worker → must survive.
+        let (tx_a, mut rx_a) = mpsc::channel::<AdmittedEvent>(SESSION_FIFO_CAP);
+        let h_a = tokio::spawn(async move { while rx_a.recv().await.is_some() {} });
+        workers.insert(
+            "active".into(),
+            SessionWorker {
+                tx: tx_a,
+                handle: h_a,
+                last_active: Instant::now(),
+            },
+        );
+
+        // Idle: live worker but last active past the TTL → must be evicted.
+        let (tx_i, mut rx_i) = mpsc::channel::<AdmittedEvent>(SESSION_FIFO_CAP);
+        let h_i = tokio::spawn(async move { while rx_i.recv().await.is_some() {} });
+        let stale = Instant::now()
+            .checked_sub(WORKER_IDLE_TTL + Duration::from_secs(1))
+            .expect("stale instant in range");
+        workers.insert(
+            "idle".into(),
+            SessionWorker {
+                tx: tx_i,
+                handle: h_i,
+                last_active: stale,
+            },
+        );
+
+        // Finished: worker task already exited (recent activity) → evicted
+        // because the handle is finished even though it is not idle.
+        let (tx_f, _rx_f) = mpsc::channel::<AdmittedEvent>(SESSION_FIFO_CAP);
+        let h_f = tokio::spawn(async move {});
+        // Let the empty task run to completion before we check is_finished.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        workers.insert(
+            "finished".into(),
+            SessionWorker {
+                tx: tx_f,
+                handle: h_f,
+                last_active: Instant::now(),
+            },
+        );
+
+        prune_idle_workers(&mut workers);
+
+        assert!(workers.contains_key("active"), "active worker must survive");
+        assert!(!workers.contains_key("idle"), "idle worker must be evicted");
+        assert!(
+            !workers.contains_key("finished"),
+            "finished worker must be evicted"
+        );
     }
 
     #[tokio::test]
