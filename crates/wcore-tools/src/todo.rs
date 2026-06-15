@@ -1,6 +1,6 @@
 //! Todo Tool — Planning & Task Management
 //!
-//! Ports `wayland-hermes/agent/tools/todo_tool.py` (MIT © Nous Research, Rust
+//! Ports `apexrouter-hermes/agent/tools/todo_tool.py` (MIT © Nous Research, Rust
 //! port by Sean) into the wcore-tools dispatch surface.
 //!
 //! Provides an in-memory task list the agent uses to decompose complex tasks,

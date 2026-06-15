@@ -104,7 +104,7 @@ pub fn register_openai_compatible_in<R: ProviderRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::WaylandProviderRegistry;
+    use crate::registry::ApexRouterProviderRegistry;
 
     fn compat_with_max_tokens_field(field: &str) -> ProviderCompat {
         ProviderCompat {
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn register_uses_lowercase_id() {
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
         register_openai_compatible_in(
             &mut r,
             "no-key".into(),
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn compat_config_passes_through() {
         // ProviderCompat must round-trip through the wrapper.
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
         register_openai_compatible_in(
             &mut r,
             "no-key".into(),
@@ -188,7 +188,7 @@ mod tests {
         // with an empty (or whitespace-only) base_url must fail loudly at
         // registration time, not silently produce a provider that connects
         // to nothing at request time.
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
 
         let empty = register_openai_compatible_in(
             &mut r,

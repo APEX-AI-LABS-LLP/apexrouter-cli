@@ -2,8 +2,8 @@
 
 {{description}}
 
-A Wayland WASM tool plugin. Built as a [WebAssembly Component](https://component-model.bytecodealliance.org/)
-that exports the `wayland:host/tool` WIT interface.
+A ApexRouter WASM tool plugin. Built as a [WebAssembly Component](https://component-model.bytecodealliance.org/)
+that exports the `apexrouter:host/tool` WIT interface.
 
 ## Toolchain
 
@@ -22,13 +22,13 @@ cargo component build --release
 ## Install
 
 ```bash
-mkdir -p ~/.wayland/plugins/{{project-name}}
-cp plugin.toml ~/.wayland/plugins/{{project-name}}/
+mkdir -p ~/.apexrouter/plugins/{{project-name}}
+cp plugin.toml ~/.apexrouter/plugins/{{project-name}}/
 cp target/wasm32-wasip1/release/{{project-name}}.wasm \
-   ~/.wayland/plugins/{{project-name}}/
+   ~/.apexrouter/plugins/{{project-name}}/
 ```
 
-The engine scans `~/.wayland/plugins/` at startup and loads any directory
+The engine scans `~/.apexrouter/plugins/` at startup and loads any directory
 that contains a `plugin.toml` with `[runtime] kind = "wasm"`.
 
 ## Signing (production)
@@ -38,11 +38,11 @@ For production:
 
 ```bash
 # Generate sig (ed25519 over component bytes)
-wayland plugin sign --key ~/.wayland/signing-key ~/.wayland/plugins/{{project-name}}/
+apexrouter plugin sign --key ~/.apexrouter/signing-key ~/.apexrouter/plugins/{{project-name}}/
 ```
 
 Authorize the matching public key for the engine by copying its `.pub`
-file into `~/.wayland/trusted-keys/`.
+file into `~/.apexrouter/trusted-keys/`.
 
 ## Test
 

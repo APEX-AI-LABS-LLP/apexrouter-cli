@@ -1,6 +1,6 @@
 [package]
 name = "wcore-cua"
-description = "Multi-platform computer-use (CUA) tool family — background-mode invariant across macOS / Linux (X11+Wayland) / Windows — design §5.18"
+description = "Multi-platform computer-use (CUA) tool family — background-mode invariant across macOS / Linux (X11+ApexRouter) / Windows — design §5.18"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
@@ -19,9 +19,9 @@ rust-version.workspace = true
 # skips target-mismatched optional deps. Opt out with
 # `--no-default-features` for the structural-only fallback.
 default = ["x11"]
-# Wayland positive-invariance test gate. Off by default — opt-in for CI
+# ApexRouter positive-invariance test gate. Off by default — opt-in for CI
 # fixtures that exercise compositor probes.
-wayland-test = []
+apexrouter-test = []
 # X11 positive-invariance test gate. Off by default.
 x11-test = []
 # Optional OCR-backed sensitive-content redaction on **Linux**. Off by
@@ -29,7 +29,7 @@ x11-test = []
 # macOS uses Apple Vision and Windows uses `Windows.Media.Ocr` — both
 # ship with the OS, so neither needs a feature flag. The heuristic
 # password-band detector stays as the always-on baseline.
-# `tempfile` is unconditional on Linux (the Wayland `wlr_screenshot`
+# `tempfile` is unconditional on Linux (the ApexRouter `wlr_screenshot`
 # path needs it for the `grim` round-trip), so it does NOT belong here.
 redact-ocr = ["dep:leptess"]
 # Linux X11 real XTest backend. ON by default on Linux (via the
@@ -39,8 +39,8 @@ x11 = ["dep:x11rb"]
 # Linux Wayland real input + screenshot. Off by default; uses `wlrctl`
 # (input) + `grim` (screenshot) subprocesses through
 # `wcore_config::shell::shell_command_argv` — no extra Rust deps.
-wayland = []
-# Real CUA e2e test (loads the wayland-cua plugin spec through the host
+apexrouter = []
+# Real CUA e2e test (loads the apexrouter-cua plugin spec through the host
 # adapter, exercises a SAFE op). Off by default; opt-in for runners that
 # allow plugin discovery.
 cua-e2e = []
@@ -102,7 +102,7 @@ objc2-core-foundation = "0.3"
 # `leptess` is the Linux OCR backend (opt-in via `redact-ocr`); macOS
 # and Windows have first-class OS-provided OCR (Apple Vision /
 # Windows.Media.Ocr), so the Tesseract native libs are Linux-only.
-# `tempfile` is unconditional on Linux — the Wayland screenshot path
+# `tempfile` is unconditional on Linux — the ApexRouter screenshot path
 # (`wlr_screenshot` → `grim` round-trip in `backends/linux_wayland.rs`)
 # uses it on the always-on dispatch path, and the optional `leptess`
 # OCR backend also needs it to feed `LepTess::set_image` from disk.

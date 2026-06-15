@@ -87,7 +87,7 @@ impl ServerToolExecutor for RegistryToolExecutor {
     }
 }
 
-/// CLI args for `wayland-core mcp-serve`.
+/// CLI args for `apexrouter-cli mcp-serve`.
 #[derive(Debug, Args)]
 pub struct McpServeArgs {
     /// Transport: `stdio` (default — Claude Desktop / MCP CLIs spawn the

@@ -39,7 +39,7 @@ use wcore_sandbox::{SandboxCommand, SandboxManifest};
 
 #[tokio::test(flavor = "current_thread")]
 async fn live_lsa_dependent_tool_fails_under_hardened_sandbox() {
-    if std::env::var("WAYLAND_SANDBOX_LIVE_WINDOWS").is_err() {
+    if std::env::var("APEXROUTER_CLI_SANDBOX_LIVE_WINDOWS").is_err() {
         return;
     }
 
@@ -89,7 +89,7 @@ async fn live_lsa_dependent_tool_fails_under_hardened_sandbox() {
 /// LSA, loose enough to run a shell builtin."
 #[tokio::test(flavor = "current_thread")]
 async fn live_cmd_builtin_runs_under_hardened_sandbox() {
-    if std::env::var("WAYLAND_SANDBOX_LIVE_WINDOWS").is_err() {
+    if std::env::var("APEXROUTER_CLI_SANDBOX_LIVE_WINDOWS").is_err() {
         return;
     }
 

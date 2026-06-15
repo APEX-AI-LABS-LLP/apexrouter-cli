@@ -1,8 +1,8 @@
 //! T3-3.3.3 — Website access policy helpers for URL-capable tools.
 //!
-//! Ported from `wayland-hermes/agent/tools/website_policy.py` (296 LOC).
+//! Ported from `apexrouter-hermes/agent/tools/website_policy.py` (296 LOC).
 //!
-//! Loads a user-managed website blocklist from `~/.wayland-core/config.yaml`
+//! Loads a user-managed website blocklist from `~/.apexrouter-cli/config.yaml`
 //! plus any referenced shared list files, and enforces it on URLs the
 //! agent's web/browser tools resolve. Kept deliberately lightweight so
 //! callers do NOT have to pull the heavier `wcore-config` cascading
@@ -24,7 +24,7 @@
 //!
 //! ## Differences from the Python original
 //!
-//! * `get_wayland_home()` is replaced by `wcore_config::config::app_config_dir()`
+//! * `get_apexrouter_home()` is replaced by `wcore_config::config::app_config_dir()`
 //!   which returns `Option<PathBuf>` — when the OS has no config dir
 //!   (rare embedded targets) the policy is treated as disabled.
 //! * Cache uses `parking_lot::Mutex` instead of a `threading.Lock` +

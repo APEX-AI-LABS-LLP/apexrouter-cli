@@ -23,10 +23,10 @@
 //! move retry) is **deliberately out of scope** for this helper port — it is
 //! tirith-specific bootstrap and belongs in a separate installer module if
 //! needed. This module only resolves an already-present binary via PATH or
-//! `$WAYLAND_HOME/bin/tirith`, and surfaces the [`check_command_security`]
+//! `$APEXROUTER_CLI_HOME/bin/tirith`, and surfaces the [`check_command_security`]
 //! main API.
 //!
-//! [`tirith_security.py`]: https://github.com/sheeki03/wayland-hermes/blob/main/agent/tools/tirith_security.py
+//! [`tirith_security.py`]: https://github.com/sheeki03/apexrouter-hermes/blob/main/agent/tools/tirith_security.py
 
 use std::env;
 use std::fs;
@@ -178,24 +178,24 @@ impl SecurityResult {
 // Failure marker (disk-persistent)
 // ---------------------------------------------------------------------------
 
-/// Return the `$WAYLAND_HOME` directory.
+/// Return the `$APEXROUTER_CLI_HOME` directory.
 ///
-/// Honours the `WAYLAND_HOME` env var; falls back to `~/.wayland` (matching
-/// hermes' `wayland_constants.get_wayland_home`).
-pub fn wayland_home() -> PathBuf {
-    if let Ok(v) = env::var("WAYLAND_HOME") {
+/// Honours the `APEXROUTER_CLI_HOME` env var; falls back to `~/.apexrouter` (matching
+/// hermes' `apexrouter_constants.get_apexrouter_home`).
+pub fn apexrouter_home() -> PathBuf {
+    if let Ok(v) = env::var("APEXROUTER_CLI_HOME") {
         return PathBuf::from(v);
     }
     if let Some(home) = dirs::home_dir() {
-        home.join(".wayland")
+        home.join(".apexrouter")
     } else {
-        PathBuf::from(".wayland")
+        PathBuf::from(".apexrouter")
     }
 }
 
 /// Path to the install-failure marker file.
 pub fn failure_marker_path() -> PathBuf {
-    wayland_home().join(".tirith-install-failed")
+    apexrouter_home().join(".tirith-install-failed")
 }
 
 /// Read the failure reason from the marker, or `None` if missing/expired.
@@ -312,7 +312,7 @@ pub enum PathResolution {
 ///
 /// For the **default** `"tirith"`:
 ///   * `PATH` lookup
-///   * `$WAYLAND_HOME/bin/tirith`
+///   * `$APEXROUTER_CLI_HOME/bin/tirith`
 ///
 /// This intentionally does **NOT** trigger the network auto-installer that the
 /// hermes source performs. See the module-level docs.
@@ -336,9 +336,9 @@ pub fn resolve_tirith_path(configured_path: &str) -> PathResolution {
         return PathResolution::Found(found);
     }
 
-    let wayland_bin = wayland_home().join("bin").join("tirith");
-    if is_executable(&wayland_bin) {
-        return PathResolution::Found(wayland_bin);
+    let apexrouter_bin = apexrouter_home().join("bin").join("tirith");
+    if is_executable(&apexrouter_bin) {
+        return PathResolution::Found(apexrouter_bin);
     }
 
     PathResolution::Missing("not_on_path".to_string())

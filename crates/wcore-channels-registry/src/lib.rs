@@ -9,7 +9,7 @@
 //!
 //! * [`channel_factory_for`] maps a `"slack"` / `"telegram"` / … string
 //!   from the on-disk `ChannelConfig` to a constructor function pointer.
-//! * [`auto_register_from_user_config`] scans `~/.wayland/channels/*.toml`
+//! * [`auto_register_from_user_config`] scans `~/.apexrouter/channels/*.toml`
 //!   and registers every channel whose `platform` field maps to a known
 //!   factory. Parse failures / missing factories log + skip so one bad
 //!   config can't take the agent down.
@@ -200,7 +200,7 @@ fn make_imessage(
     )))
 }
 
-/// Production entry point — scan `~/.wayland/channels/*.toml` and
+/// Production entry point — scan `~/.apexrouter/channels/*.toml` and
 /// register every channel whose `platform` field maps to a known
 /// factory. Returns the count successfully registered.
 ///
@@ -214,7 +214,7 @@ pub async fn auto_register_from_user_config(
 ) -> Result<usize, ChannelLoadError> {
     let dir = dirs::home_dir()
         .ok_or_else(|| ChannelLoadError::Config("no home dir".to_string()))?
-        .join(".wayland")
+        .join(".apexrouter")
         .join("channels");
     auto_register_from_dir(mgr, &dir, credentials).await
 }
@@ -428,7 +428,7 @@ mod tests {
         let mut mgr = ChannelManager::new();
         let count = auto_register_from_dir(
             &mut mgr,
-            Path::new("/nonexistent/wayland/channels/x"),
+            Path::new("/nonexistent/apexrouter/channels/x"),
             creds(),
         )
         .await

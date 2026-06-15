@@ -1,17 +1,17 @@
 //! Hermeticity audit test (#270, F-010).
 //!
-//! Locks the gate behind `wayland_config_dir()`: no source file in the
+//! Locks the gate behind `apexrouter_config_dir()`: no source file in the
 //! workspace may call `dirs::config_dir()` directly, with the sole
 //! exception of the canonical helper itself in
 //! `crates/wcore-config/src/config.rs`. Without this test, the three
 //! bypass sites we just fixed (`tui/frecency.rs`, `auto_memorize.rs`,
 //! `debug_helpers.rs`) could silently re-appear via copy-paste of an
-//! older pattern, breaking `WAYLAND_HOME` hermeticity for tests,
+//! older pattern, breaking `APEXROUTER_CLI_HOME` hermeticity for tests,
 //! sandboxed runs, and second-user accounts.
 //!
 //! Scope: this test gates ONLY `dirs::config_dir()`. The
 //! `dirs::home_dir()` landscape has many legitimate callers
-//! (`~/.wayland/trusted-keys` for plugin signing, ADC credential paths,
+//! (`~/.apexrouter/trusted-keys` for plugin signing, ADC credential paths,
 //! cron sentinel fallbacks, etc.) and would require a much larger
 //! allowlist; a separate audit is the right place to tackle it if/when
 //! a similar gate is desired.
@@ -25,11 +25,11 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Files allowed to call `dirs::config_dir()` directly. Everything else
-/// must route through `wcore_config::config::wayland_config_dir()` so
-/// `WAYLAND_HOME` hermetically sandboxes on-disk state (F-010).
+/// must route through `wcore_config::config::apexrouter_config_dir()` so
+/// `APEXROUTER_CLI_HOME` hermetically sandboxes on-disk state (F-010).
 const ALLOWLIST: &[&str] = &[
     // The canonical helper — this is the one legitimate call site, the
-    // platform-native fallback inside `wayland_config_dir()` itself.
+    // platform-native fallback inside `apexrouter_config_dir()` itself.
     "crates/wcore-config/src/config.rs",
 ];
 
@@ -131,9 +131,9 @@ fn no_dirs_config_dir_bypasses_outside_canonical_helper() {
 
     assert!(
         hits.is_empty(),
-        "Found {} bypass(es) of `wayland_config_dir()` — every call site \
-         must route through `wcore_config::config::wayland_config_dir()` so \
-         `WAYLAND_HOME` hermetically sandboxes on-disk state (F-010, #270). \
+        "Found {} bypass(es) of `apexrouter_config_dir()` — every call site \
+         must route through `wcore_config::config::apexrouter_config_dir()` so \
+         `APEXROUTER_CLI_HOME` hermetically sandboxes on-disk state (F-010, #270). \
          If a new legitimate caller exists, add its path to ALLOWLIST in \
          this test with an explanation.\n\nOffending lines:\n{}",
         hits.len(),

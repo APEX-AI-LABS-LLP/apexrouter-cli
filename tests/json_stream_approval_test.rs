@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-use wayland-core::engine::AgentEngine;
-use wayland-core::output::OutputSink;
-use wayland-core::output::terminal::TerminalSink;
-use wayland-core::protocol::{ToolApprovalManager, ToolApprovalResult};
-use wayland-core::protocol::writer::ProtocolWriter;
-use wayland-core::tools::registry::ToolRegistry;
-use wayland-core::types::llm::LlmEvent;
-use wayland-core::types::message::{StopReason, TokenUsage};
+use apexrouter-cli::engine::AgentEngine;
+use apexrouter-cli::output::OutputSink;
+use apexrouter-cli::output::terminal::TerminalSink;
+use apexrouter-cli::protocol::{ToolApprovalManager, ToolApprovalResult};
+use apexrouter-cli::protocol::writer::ProtocolWriter;
+use apexrouter-cli::tools::registry::ToolRegistry;
+use apexrouter-cli::types::llm::LlmEvent;
+use apexrouter-cli::types::message::{StopReason, TokenUsage};
 
 use common::{ExecMockTool, MockLlmProvider, test_config};
 

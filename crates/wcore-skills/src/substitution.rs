@@ -7,13 +7,9 @@ use regex::Regex;
 /// 2. Indexed arguments: `$ARGUMENTS[0]`, `$ARGUMENTS[1]`
 /// 3. Shorthand indexed: `$0`, `$1`, `$2`
 /// 4. Full arguments: `$ARGUMENTS` → entire args string
-/// 5. Skill directory: `${WCORE_SKILL_DIR}` (primary) or `${AIONRS_SKILL_DIR}` (alias) → `skill_root`
-/// 6. Session ID: `${WCORE_SESSION_ID}` (primary) or `${AIONRS_SESSION_ID}` (alias) → `session_id`
+/// 5. Skill directory: `${WCORE_SKILL_DIR}` → `skill_root`
+/// 6. Session ID: `${WCORE_SESSION_ID}` → `session_id`
 /// 7. Fallback: if content is unchanged and args is non-empty, append `\n\nARGUMENTS: {args}`
-///
-/// The `AIONRS_*` tokens are backward-compat aliases retained so existing
-/// user-authored skills continue to work after the wayland-core rebrand.
-/// New skills should use the `WCORE_*` form.
 ///
 /// When `args` is `None`, the content is returned unchanged (no placeholders replaced).
 pub fn substitute_arguments(
@@ -26,16 +22,14 @@ pub fn substitute_arguments(
     // Always apply env-var substitutions regardless of args.
     let mut result = content.to_owned();
 
-    // 5. ${WCORE_SKILL_DIR} (primary) + ${AIONRS_SKILL_DIR} (legacy alias)
+    // 5. ${WCORE_SKILL_DIR}
     if let Some(root) = skill_root {
         result = result.replace("${WCORE_SKILL_DIR}", root);
-        result = result.replace("${AIONRS_SKILL_DIR}", root);
     }
 
-    // 6. ${WCORE_SESSION_ID} (primary) + ${AIONRS_SESSION_ID} (legacy alias)
+    // 6. ${WCORE_SESSION_ID}
     if let Some(sid) = session_id {
         result = result.replace("${WCORE_SESSION_ID}", sid);
-        result = result.replace("${AIONRS_SESSION_ID}", sid);
     }
 
     // If no args provided, return after env substitutions only.
@@ -477,8 +471,7 @@ mod supplemental_tests {
     }
 
     // -----------------------------------------------------------------------
-    // TC-6.x: ${WCORE_SKILL_DIR} substitution (primary form)
-    // TC-6.2 retains the ${AIONRS_SKILL_DIR} literal as alias-regression coverage.
+    // TC-6.x: ${WCORE_SKILL_DIR} substitution
     // -----------------------------------------------------------------------
 
     #[test]
@@ -487,19 +480,16 @@ mod supplemental_tests {
             "cd ${WCORE_SKILL_DIR}",
             None,
             &[],
-            Some("/home/user/.wayland-core/skills/my-skill"),
+            Some("/home/user/.apexrouter-cli/skills/my-skill"),
             None,
         );
-        assert_eq!(r, "cd /home/user/.wayland-core/skills/my-skill");
+        assert_eq!(r, "cd /home/user/.apexrouter-cli/skills/my-skill");
     }
 
     #[test]
-    fn tc_6_2_skill_dir_none_not_replaced_legacy_alias() {
-        // skill_root = None → ${AIONRS_SKILL_DIR} (alias form) stays unreplaced.
-        // Retained as alias-regression coverage: the legacy token must still
-        // round-trip unchanged when no skill_root is provided.
-        let r = substitute_arguments("cd ${AIONRS_SKILL_DIR}", None, &[], None, None);
-        assert_eq!(r, "cd ${AIONRS_SKILL_DIR}");
+    fn tc_6_2_skill_dir_none_not_replaced() {
+        let r = substitute_arguments("cd ${WCORE_SKILL_DIR}", None, &[], None, None);
+        assert_eq!(r, "cd ${WCORE_SKILL_DIR}");
     }
 
     #[test]
@@ -515,8 +505,7 @@ mod supplemental_tests {
     }
 
     // -----------------------------------------------------------------------
-    // TC-7.x: ${WCORE_SESSION_ID} substitution (primary form)
-    // TC-7.2 retains the ${AIONRS_SESSION_ID} literal as alias-regression coverage.
+    // TC-7.x: ${WCORE_SESSION_ID} substitution
     // -----------------------------------------------------------------------
 
     #[test]
@@ -532,43 +521,33 @@ mod supplemental_tests {
     }
 
     #[test]
-    fn tc_7_2_session_id_none_not_replaced_legacy_alias() {
-        // Retained as alias-regression coverage: legacy ${AIONRS_SESSION_ID}
-        // token must still round-trip unchanged when no session_id is provided.
-        let r = substitute_arguments("Session: ${AIONRS_SESSION_ID}", None, &[], None, None);
-        assert_eq!(r, "Session: ${AIONRS_SESSION_ID}");
+    fn tc_7_2_session_id_none_not_replaced() {
+        let r = substitute_arguments("Session: ${WCORE_SESSION_ID}", None, &[], None, None);
+        assert_eq!(r, "Session: ${WCORE_SESSION_ID}");
     }
 
     // -----------------------------------------------------------------------
-    // TC-alias: WCORE_* and AIONRS_* template tokens expand identically.
+    // TC-alias: ${WCORE_SKILL_DIR} and ${WCORE_SESSION_ID} both expand.
     // -----------------------------------------------------------------------
 
     #[test]
-    fn tc_alias_skill_dir_wcore_and_aionrs_expand_to_same_value() {
+    fn tc_skill_dir_replaced() {
         let root = "/skills/foo";
         let wcore = substitute_arguments("X=${WCORE_SKILL_DIR}", None, &[], Some(root), None);
-        let aionrs = substitute_arguments("X=${AIONRS_SKILL_DIR}", None, &[], Some(root), None);
         assert_eq!(wcore, "X=/skills/foo");
-        assert_eq!(aionrs, "X=/skills/foo");
-        assert_eq!(wcore, aionrs);
     }
 
     #[test]
-    fn tc_alias_session_id_wcore_and_aionrs_expand_to_same_value() {
+    fn tc_session_id_replaced() {
         let sid = "session-xyz";
         let wcore = substitute_arguments("S=${WCORE_SESSION_ID}", None, &[], None, Some(sid));
-        let aionrs = substitute_arguments("S=${AIONRS_SESSION_ID}", None, &[], None, Some(sid));
         assert_eq!(wcore, "S=session-xyz");
-        assert_eq!(aionrs, "S=session-xyz");
-        assert_eq!(wcore, aionrs);
     }
 
     #[test]
-    fn tc_alias_mixed_tokens_in_one_string_both_expand() {
-        // Skill content that mixes both naming conventions in a single template
-        // (e.g. during a gradual migration) must still resolve every token.
+    fn tc_mixed_tokens_in_one_string_both_expand() {
         let r = substitute_arguments(
-            "${WCORE_SKILL_DIR}/run ${AIONRS_SESSION_ID}",
+            "${WCORE_SKILL_DIR}/run ${WCORE_SESSION_ID}",
             None,
             &[],
             Some("/skills/foo"),

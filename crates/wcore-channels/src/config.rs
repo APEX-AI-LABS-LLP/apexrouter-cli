@@ -1,6 +1,6 @@
 //! `ChannelConfig` — TOML schema + on-disk loader.
 //!
-//! Layout: `~/.wayland/channels/<name>.toml`. Each file is one
+//! Layout: `~/.apexrouter/channels/<name>.toml`. Each file is one
 //! channel instance; the `[secrets]` table holds plaintext only if
 //! the operator explicitly chose unsafe-on-disk storage — otherwise
 //! values are keychain references (`keychain:<service>:<account>`).
@@ -47,7 +47,7 @@ fn default_enabled() -> bool {
     true
 }
 
-/// Loader for `~/.wayland/channels/*.toml`.
+/// Loader for `~/.apexrouter/channels/*.toml`.
 #[derive(Debug, Clone)]
 pub struct ChannelConfigLoader {
     root: PathBuf,
@@ -58,12 +58,12 @@ impl ChannelConfigLoader {
         Self { root: root.into() }
     }
 
-    /// Default loader rooted at `$HOME/.wayland/channels`. Falls back
+    /// Default loader rooted at `$HOME/.apexrouter/channels`. Falls back
     /// to the platform temp dir if `$HOME` is unset.
     pub fn default_root() -> PathBuf {
         match std::env::var_os("HOME") {
-            Some(h) => Path::new(&h).join(".wayland").join("channels"),
-            None => std::env::temp_dir().join("wayland-channels"),
+            Some(h) => Path::new(&h).join(".apexrouter").join("channels"),
+            None => std::env::temp_dir().join("apexrouter-channels"),
         }
     }
 
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn load_all_missing_dir_returns_ok_empty() {
-        let loader = ChannelConfigLoader::new("/nonexistent/wayland/channels");
+        let loader = ChannelConfigLoader::new("/nonexistent/apexrouter/channels");
         let v = loader.load_all().unwrap();
         assert!(v.is_empty());
     }
@@ -139,7 +139,7 @@ platform = "slack"
 workspace = "acme.slack.com"
 
 [secrets]
-bot_token = "keychain:wayland-channels:acme-bot"
+bot_token = "keychain:apexrouter-channels:acme-bot"
 "#,
         )
         .unwrap();

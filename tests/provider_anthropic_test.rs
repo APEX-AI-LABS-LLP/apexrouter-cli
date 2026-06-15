@@ -3,12 +3,12 @@
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use wayland-core::provider::anthropic::AnthropicProvider;
-use wayland-core::provider::compat::ProviderCompat;
-use wayland-core::provider::debug::DebugConfig;
-use wayland-core::provider::{LlmProvider, ProviderError};
-use wayland-core::types::llm::{LlmEvent, LlmRequest, ThinkingConfig};
-use wayland-core::types::message::{ContentBlock, Message, Role, StopReason};
+use apexrouter-cli::provider::anthropic::AnthropicProvider;
+use apexrouter-cli::provider::compat::ProviderCompat;
+use apexrouter-cli::provider::debug::DebugConfig;
+use apexrouter-cli::provider::{LlmProvider, ProviderError};
+use apexrouter-cli::types::llm::{LlmEvent, LlmRequest, ThinkingConfig};
+use apexrouter-cli::types::message::{ContentBlock, Message, Role, StopReason};
 
 // ---------------------------------------------------------------------------
 // Helpers

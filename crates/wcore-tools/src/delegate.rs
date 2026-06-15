@@ -2,7 +2,7 @@
 //!
 //! Hermes's `delegate_task` spawns one or more child `AIAgent` instances
 //! with isolated context, restricted toolsets, and their own terminal
-//! sessions; the parent only sees the final summary. Wayland already
+//! sessions; the parent only sees the final summary. ApexRouter already
 //! exposes the same primitive via [`wcore_types::spawner::Spawner`],
 //! whose concrete implementation `AgentSpawner` lives in `wcore-agent`
 //! (one layer above this crate). The trait is intentionally hosted in
@@ -20,7 +20,7 @@
 //!     `ThreadPoolExecutor`), and
 //!   * the JSON result envelope returned to the parent agent.
 //!
-//! The Wayland `Spawner` trait exposes a single-task `spawn_fork`
+//! The ApexRouter `Spawner` trait exposes a single-task `spawn_fork`
 //! entry point; batch parallelism is implemented here by joining one
 //! call per task. The blocked-tools / depth-limit / credential-pool
 //! machinery from hermes does NOT cross the boundary in this port —

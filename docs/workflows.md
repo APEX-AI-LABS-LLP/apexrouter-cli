@@ -13,7 +13,7 @@ as the `Spawn` tool. There is no separate runtime: stages are sub-agents.
 ForgeFlows are surfaced three ways:
 
 - **`Workflow` LLM tool** — the model runs an inline RON ForgeFlow mid-conversation.
-- **`wayland-core workflow` CLI** (alias `forgeflows`) — validate, list, and run
+- **`apexrouter-cli workflow` CLI** (alias `forgeflows`) — validate, list, and run
   saved `.ron` ForgeFlows.
 - **Shadow-mode detection** — a telemetry-only signal that flags turns that *look
   like* a ForgeFlow (off by default; never prompts or routes — see
@@ -187,22 +187,22 @@ state (e.g. a `changed_files` array) is exercised today through the
 
 ---
 
-## The `wayland-core workflow` CLI
+## The `apexrouter-cli workflow` CLI
 
-Saved ForgeFlows live in `<project-root>/.wayland/workflows/*.ron`. The project
-root is the nearest ancestor of the cwd containing a `.wayland` directory
-(falling back to `<cwd>/.wayland/workflows`). The subcommand is `workflow`, with
-the visible alias `forgeflows` — `wayland-core forgeflows list` works too.
+Saved ForgeFlows live in `<project-root>/.apexrouter/workflows/*.ron`. The project
+root is the nearest ancestor of the cwd containing a `.apexrouter` directory
+(falling back to `<cwd>/.apexrouter/workflows`). The subcommand is `workflow`, with
+the visible alias `forgeflows` — `apexrouter-cli forgeflows list` works too.
 
 ```bash
 # Parse and validate a single .ron file (no execution, no provider).
-wayland-core workflow validate path/to/review.ron
+apexrouter-cli workflow validate path/to/review.ron
 
 # List saved ForgeFlows: "name  ~N agents  — description".
-wayland-core workflow list
+apexrouter-cli workflow list
 
-# Run a saved ForgeFlow by name (resolves .wayland/workflows/<NAME>.ron).
-wayland-core workflow run review-changes
+# Run a saved ForgeFlow by name (resolves .apexrouter/workflows/<NAME>.ron).
+apexrouter-cli workflow run review-changes
 ```
 
 - **`validate <FILE>`** prints `OK: <name>` plus the node count and the
@@ -218,7 +218,7 @@ wayland-core workflow run review-changes
   explicit tier — the operator opted in by invoking `run`, so there is no
   confirm gate.
 
-> The CLI binary is `wayland-core`; the subcommand is `workflow` (alias `forgeflows`).
+> The CLI binary is `apexrouter-cli`; the subcommand is `workflow` (alias `forgeflows`).
 
 ---
 

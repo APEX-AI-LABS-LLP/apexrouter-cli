@@ -124,7 +124,7 @@ impl ModelDownloader for SsrfSafeHttpDownloader {
                     .get(&url_owned)
                     .header(
                         reqwest::header::USER_AGENT,
-                        "Mozilla/5.0 (compatible; wayland-core/Piper)",
+                        "Mozilla/5.0 (compatible; apexrouter-cli/Piper)",
                     )
                     .timeout(Duration::from_secs(60))
                     .send()
@@ -250,7 +250,7 @@ impl BinaryExtractor for TarGzBinaryExtractor {
 // ---------------------------------------------------------------------
 
 /// Voice-id input sanitiser. Rejects `..`, `/`, `\`, NUL — anything that
-/// could escape `~/.wayland/piper-voices/<voice>/` via path-traversal.
+/// could escape `~/.apexrouter/piper-voices/<voice>/` via path-traversal.
 /// Returns the voice id unchanged on success.
 fn validate_voice_name(name: &str) -> Result<&str, TtsError> {
     if name.is_empty() {
@@ -276,11 +276,11 @@ fn validate_voice_name(name: &str) -> Result<&str, TtsError> {
     Ok(name)
 }
 
-/// Canonical default voices directory: `~/.wayland/piper-voices/`.
+/// Canonical default voices directory: `~/.apexrouter/piper-voices/`.
 /// Returns `None` if the home directory cannot be resolved (extremely
 /// hostile environment).
 fn default_voices_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".wayland").join("piper-voices"))
+    dirs::home_dir().map(|h| h.join(".apexrouter").join("piper-voices"))
 }
 
 // ---------------------------------------------------------------------
@@ -307,8 +307,8 @@ pub fn build_piper_download_backend() -> Option<Arc<PiperDownloader>> {
 ///
 /// Discovery rules:
 /// 1. If `PIPER_VOICE` env is set, validate it and check
-///    `~/.wayland/piper-voices/{voice}.onnx` is cached.
-/// 2. Otherwise, check `~/.wayland/piper-voices/{DEFAULT_PIPER_VOICE}.onnx`.
+///    `~/.apexrouter/piper-voices/{voice}.onnx` is cached.
+/// 2. Otherwise, check `~/.apexrouter/piper-voices/{DEFAULT_PIPER_VOICE}.onnx`.
 /// 3. If neither path probes a cached voice, return `None`.
 pub fn build_piper_tts_backend() -> Option<Arc<dyn TtsBackend>> {
     let voices_dir = default_voices_dir()?;
@@ -778,7 +778,7 @@ mod tests {
     #[test]
     #[serial]
     fn piper_tts_returns_none_when_no_voices_downloaded() {
-        // Force HOME to a tempdir so `~/.wayland/piper-voices/` is empty.
+        // Force HOME to a tempdir so `~/.apexrouter/piper-voices/` is empty.
         let tmp = TempDir::new().unwrap();
         let prev_home = std::env::var_os("HOME");
         // SAFETY: env mutation guarded by #[serial].
@@ -816,7 +816,7 @@ mod tests {
     fn piper_tts_returns_none_even_when_voice_present_until_synthesis_lands() {
         let tmp = TempDir::new().unwrap();
         // Pre-populate the canonical voices dir with the default voice.
-        let voices = tmp.path().join(".wayland").join("piper-voices");
+        let voices = tmp.path().join(".apexrouter").join("piper-voices");
         std::fs::create_dir_all(&voices).unwrap();
         // Write a file large enough to clear MIN_VOICE_SIZE_BYTES.
         let onnx = voices.join(format!("{DEFAULT_PIPER_VOICE}.onnx"));

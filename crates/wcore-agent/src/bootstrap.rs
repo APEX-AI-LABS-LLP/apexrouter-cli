@@ -29,7 +29,7 @@ pub struct BootstrapResult {
     /// W8c.3 H.2: plugin-derived capability set carried into the
     /// `Capabilities` advertisement. Built from the live plugin loader
     /// so flags like `browser_suite` and `computer_use` flip when
-    /// `wayland-browser` / `wayland-cua` actually loaded. Pre-W8c.3
+    /// `apexrouter-browser` / `apexrouter-cua` actually loaded. Pre-W8c.3
     /// consumers can ignore this field (`has_plugins` is unchanged).
     pub plugin_capabilities: crate::output::protocol_sink::PluginCapabilitySet,
     /// W8c.3 H.2: the canonical list of loaded plugin names, as
@@ -58,7 +58,7 @@ pub struct BootstrapResult {
     /// v0.8.1 U5 — channel runtime. `ChannelManager` is constructed
     /// at boot and seeded by
     /// `wcore_channels_registry::auto_register_from_user_config`,
-    /// which scans `~/.wayland/channels/*.toml` and registers every
+    /// which scans `~/.apexrouter/channels/*.toml` and registers every
     /// adapter whose `platform` field maps to a known factory.
     ///
     /// F-014 + F-050 (CRIT + MED): lifted to `Arc<tokio::sync::RwLock<ChannelManager>>`
@@ -102,11 +102,11 @@ pub struct BootstrapResult {
 /// with the live list of registered `Arc<dyn PluginProvider>` handles. The
 /// router inspects `model_str` (typically `Config.model`) and may downcast
 /// a plugin provider into a concrete `wcore_providers::LlmProvider`, e.g.
-/// the `wayland-ollama` route when `model_str.starts_with("ollama:")`.
+/// the `apexrouter-ollama` route when `model_str.starts_with("ollama:")`.
 ///
 /// Returning `None` falls through to the built-in `create_provider(&config)`
 /// path. The downcast itself lives in the binary crate (`wcore-cli`) — it's
-/// the only crate that links both `wcore-providers` and `wayland-ollama`.
+/// the only crate that links both `wcore-providers` and `apexrouter-ollama`.
 pub type PluginProviderRouter =
     Box<dyn Fn(&str, &[Arc<dyn PluginProvider>]) -> Option<Arc<dyn LlmProvider>> + Send + Sync>;
 
@@ -228,7 +228,7 @@ impl AgentBootstrap {
     /// init; if it returns `Some(provider)`, that provider replaces the
     /// default `wcore_providers::create_provider(&config)` path. Used by
     /// `wcore-cli` to route `--model ollama:*` through the loaded
-    /// `wayland-ollama` plugin's `OllamaProvider`. No-op when an
+    /// `apexrouter-ollama` plugin's `OllamaProvider`. No-op when an
     /// explicit `.provider(...)` was already supplied.
     pub fn plugin_provider_router(mut self, router: PluginProviderRouter) -> Self {
         self.plugin_provider_router = Some(router);
@@ -295,7 +295,7 @@ impl AgentBootstrap {
         let mut registry = wcore_tools::registry::ToolRegistry::new();
 
         // W2.5: plugin discovery + initialization. PluginsConfig is
-        // intentionally empty this wave; full ~/.wayland-core/plugins.toml
+        // intentionally empty this wave; full ~/.apexrouter-cli/plugins.toml
         // load lands in W4 alongside the permission-grant UX. Built-in
         // plugins discovered via inventory work today regardless. Per
         // design spec §5.17: one bad plugin must not crash session boot —
@@ -310,7 +310,7 @@ impl AgentBootstrap {
         // `computer_use_advertised`, every captured `CuaToolSpec` errors
         // `CapabilityDisabled` at reify-time and no CUA tool ever reaches
         // the registry. Per-OS reification still self-gates restricted
-        // platforms (e.g. wlroots-only Wayland compositors via
+        // platforms (e.g. wlroots-only ApexRouter compositors via
         // `compositor_allows_background_input`), so unconditionally `true`
         // here is safe — the runtime check refuses on unsupported hosts.
         let mut plugin_runner =
@@ -329,7 +329,7 @@ impl AgentBootstrap {
         // Wave 6A.1 — on-disk plugin discovery. The inventory `discover()`
         // above only finds statically-linked plugins. Path-based WASM /
         // subprocess / MCP-bridge plugins live at
-        // `$WAYLAND_PLUGINS_DIR` (override) or
+        // `$APEXROUTER_CLI_PLUGINS_DIR` (override) or
         // `PluginIdentity::default_plugin_root()`. We walk that root,
         // dispatch each manifest to the matching runner, then synthesize
         // `InitializeOutcome`s from the loaded handles and merge them into
@@ -437,8 +437,8 @@ impl AgentBootstrap {
         let has_plugins = plugin_outcome.has_any_registered();
         // W8c.3 H.2: snapshot the loaded plugin names so the protocol
         // sink can flip per-plugin capability flags
-        // (`browser_suite` when `wayland-browser` loaded,
-        // `computer_use` when `wayland-cua` loaded). `captured` is the
+        // (`browser_suite` when `apexrouter-browser` loaded,
+        // `computer_use` when `apexrouter-cua` loaded). `captured` is the
         // post-validation list; anything that initialize-errored is in
         // `plugin_outcome.errors` but still counts as "discovered" for
         // the wire-capability flag (matches the established pattern of
@@ -448,8 +448,8 @@ impl AgentBootstrap {
         // Wave SC SECURITY MAJOR fix: pair every loaded plugin with a
         // verified `PluginIdentity`. All inventory-discovered plugins
         // are `Static` (compile-time symbol-anchored); a malicious
-        // crate cannot impersonate the real `wayland-browser` /
-        // `wayland-cua` because the inventory registry is populated by
+        // crate cannot impersonate the real `apexrouter-browser` /
+        // `apexrouter-cua` because the inventory registry is populated by
         // `inventory::submit!` macros that the engine's own build
         // links in. `from_verified` consumes the `(name, identity)`
         // pairs so the capability advertisement is gated on that
@@ -474,7 +474,7 @@ impl AgentBootstrap {
         //   1. Explicit `.provider(...)` injection wins (test override).
         //   2. `plugin_provider_router` invoked on `config.model` — if it
         //      returns Some, that's the provider (e.g. `ollama:llama3`
-        //      routed through `wayland-ollama`'s `OllamaProvider`).
+        //      routed through `apexrouter-ollama`'s `OllamaProvider`).
         //   3. Built-in `wcore_providers::create_provider(&config)` for
         //      the four core providers (anthropic/openai/bedrock/vertex).
         let routed_provider: Option<Arc<dyn LlmProvider>> = if self.provider.is_none() {
@@ -550,7 +550,7 @@ impl AgentBootstrap {
         // T11: JsonlTool — large-file-friendly JSON Lines streaming tool.
         registry.register(Box::new(wcore_tools::jsonl_tool::JsonlTool::default()));
         // T3-3.1.1: ClarifyTool — structured user-clarification prompt
-        // (ported from wayland-hermes). The host layer intercepts
+        // (ported from apexrouter-hermes). The host layer intercepts
         // tool calls named `clarify` to perform the real UI interaction.
         registry.register(Box::new(wcore_tools::clarify::ClarifyTool::new()));
         // v0.9.3 W0.4: AskUserQuestionTool — structured multi-choice question.
@@ -563,7 +563,7 @@ impl AgentBootstrap {
             wcore_tools::ask_user_question::AskUserQuestionTool::new(),
         ));
         // T3-3.1.2: TodoTool — in-memory planning/task list ported from
-        // wayland-hermes. State is per-session (one `TodoTool` instance
+        // apexrouter-hermes. State is per-session (one `TodoTool` instance
         // per bootstrap → one list per agent session).
         registry.register(Box::new(wcore_tools::todo::TodoTool::new()));
         // T3-3.1.4: SendMessageTool — registered with the fail-loud
@@ -637,7 +637,7 @@ impl AgentBootstrap {
 
         // Wave RC (2026-05-23): wire WebFetch. The Browser tool requires a
         // Camoufox / Chromium sidecar that ISN'T installed by default on a
-        // fresh wayland-core, so a model asked "fetch github.com/trending"
+        // fresh apexrouter-cli, so a model asked "fetch github.com/trending"
         // used to call Browser, hit the missing sidecar, and watch a 60s
         // spinner. WebFetch is a plain HTTP GET (real reqwest backend
         // from crate::tool_backends) + readability extraction for HTML
@@ -798,7 +798,7 @@ impl AgentBootstrap {
                 wcore_tools::video_analyze_tool::VideoAnalyzeTool::with_backend(b),
             ));
         }
-        // v0.9.0 W1 B7 — wayland_introspection: two tools share one backend.
+        // v0.9.0 W1 B7 — apexrouter_introspection: two tools share one backend.
         // The backend reads in-process session state (no env keys, no
         // network). The same concrete `Arc<InMemorySessionState>` is wired
         // into the engine below (via `set_session_state`) so per-turn token
@@ -812,12 +812,12 @@ impl AgentBootstrap {
         let intro_backend =
             crate::tool_backends::introspection::build_introspection_backend(state_reader);
         registry.register(Box::new(
-            wcore_tools::wayland_introspection::WaylandStatusTool::new(intro_backend.clone()),
+            wcore_tools::apexrouter_introspection::ApexRouterStatusTool::new(intro_backend.clone()),
         ));
         registry.register(Box::new(
-            wcore_tools::wayland_introspection::WaylandTelemetryQueryTool::new(intro_backend),
+            wcore_tools::apexrouter_introspection::ApexRouterTelemetryQueryTool::new(intro_backend),
         ));
-        // v0.9.0 W1 B6 — cronjob: wire WaylandCronScheduler over FileCronStore.
+        // v0.9.0 W1 B6 — cronjob: wire ApexRouterCronScheduler over FileCronStore.
         // Adapter constructs its own FileCronStore over the default path; the
         // runner at bootstrap.rs:~1900 owns a separate FileCronStore over the
         // same path. Both writers serialise inside the store's internal mutex;
@@ -856,7 +856,7 @@ impl AgentBootstrap {
         //     `connect_plugin_mcp_servers` second pass below.
         //   - user-models: `applied.plugin_user_models` is a carrier only at
         //     v0.6.4 Task 2.2. v0.6.4 Task 2.3 will reify each
-        //     `CapturedUserModel` into a live `wayland_honcho::HonchoClient`
+        //     `CapturedUserModel` into a live `apexrouter_honcho::HonchoClient`
         //     (or other backend) and thread it into the engine via the
         //     `UserModel` injection point.
         //
@@ -1318,7 +1318,7 @@ impl AgentBootstrap {
             system_prompt
         };
         // v0.7.0 2.B.4: append user-context block when memory is on.
-        // F-093: backend is selected by `WAYLAND_USER_MODEL_BACKEND`.
+        // F-093: backend is selected by `APEXROUTER_CLI_USER_MODEL_BACKEND`.
         // When the env var is ABSENT, auto-detect: use `honcho` if
         // `HONCHO_API_KEY` is set in the environment, else fall back to
         // `local` and emit a one-time hint so users discover the option.
@@ -1339,7 +1339,7 @@ impl AgentBootstrap {
             if want_memory {
                 // F-093: resolve the effective backend name. When the env var
                 // is absent, auto-detect from HONCHO_API_KEY presence.
-                let explicit = std::env::var("WAYLAND_USER_MODEL_BACKEND").ok();
+                let explicit = std::env::var("APEXROUTER_CLI_USER_MODEL_BACKEND").ok();
                 let backend_choice: String = match &explicit {
                     Some(v) => v.clone(),
                     None => {
@@ -1356,7 +1356,7 @@ impl AgentBootstrap {
                             tracing::info!(
                                 target: "wcore_agent::bootstrap",
                                 "user-model: using local backend \
-                                 (set HONCHO_API_KEY or WAYLAND_USER_MODEL_BACKEND=honcho \
+                                 (set HONCHO_API_KEY or APEXROUTER_CLI_USER_MODEL_BACKEND=honcho \
                                  for deeper Honcho dialectic user modeling)"
                             );
                             "local".to_string()
@@ -1369,7 +1369,7 @@ impl AgentBootstrap {
                     // matters when an operator opts into Honcho.
                     let path = wcore_memory::paths::auto_memory_dir(cwd_path)
                         .map(|d| d.join("user-model.json"))
-                        .unwrap_or_else(|| cwd_path.join(".wayland").join("user-model.json"));
+                        .unwrap_or_else(|| cwd_path.join(".apexrouter").join("user-model.json"));
                     match wcore_user_model::LocalBackend::with_persistence(&path) {
                         Ok(b) => Some(std::sync::Arc::new(b)),
                         Err(e) => {
@@ -1399,7 +1399,7 @@ impl AgentBootstrap {
                             let path = wcore_memory::paths::auto_memory_dir(cwd_path)
                                 .map(|d| d.join("user-model.json"))
                                 .unwrap_or_else(|| {
-                                    cwd_path.join(".wayland").join("user-model.json")
+                                    cwd_path.join(".apexrouter").join("user-model.json")
                                 });
                             wcore_user_model::LocalBackend::with_persistence(&path)
                                 .ok()
@@ -1428,7 +1428,7 @@ impl AgentBootstrap {
 
         // W6 — opt the catalog into cross-project skill resolution. The
         // current project's parent directory holds sibling projects; a
-        // `resolve()` miss widens to their `.wayland-core/skills/` dirs.
+        // `resolve()` miss widens to their `.apexrouter-cli/skills/` dirs.
         // Degrades to single-project behaviour when cwd has no parent.
         let mut catalog = wcore_skills::refs::SkillCatalog::from_refs(skill_refs);
         if let Some(siblings_root) = cwd_path.parent() {
@@ -1619,7 +1619,7 @@ impl AgentBootstrap {
                 .with_parent_output(Arc::clone(&self.output)),
         ));
         // T3-3.1.3: DelegateTool — focused single-task / batch delegation
-        // surface ported from wayland-hermes. Sibling to SpawnTool (the
+        // surface ported from apexrouter-hermes. Sibling to SpawnTool (the
         // existing registry-aware multi-agent fan-out): Delegate provides
         // structured-JSON output + per-task `toolsets` whitelist + max
         // turns 50 default, while Spawn exposes registry-resolved named
@@ -1847,7 +1847,7 @@ impl AgentBootstrap {
         // B7 writer-side wiring — hand the engine the same
         // `InMemorySessionState` the introspection backend reads, so per-turn
         // token totals + per-tool call counts populate the struct that
-        // `wayland_status` / `wayland_telemetry_query` surface.
+        // `apexrouter_status` / `apexrouter_telemetry_query` surface.
         engine.set_session_state(session_state);
         // Wave 6A.1 — hand the on-disk plugin runtime keepalives to the
         // engine so they outlive the registered tool closures.
@@ -1905,22 +1905,22 @@ impl AgentBootstrap {
         // v0.8.1 U6 — install the autonomous `SkillDrafter`. After N=3
         // consecutive successful turns on the same task signature,
         // `engine::observe_auto_skill` writes a candidate skill to
-        // `$WAYLAND_HOME/skills/auto/` and records into GEPA's
+        // `$APEXROUTER_CLI_HOME/skills/auto/` and records into GEPA's
         // `PromptStore` so the next session's U1 `SkillRouter` hydrates
         // the new skill as a seed pair. Only installed when a real
         // `Db` is available — without one we have no PromptStore and the
         // closed-loop seed pathway is dead. The bucketer itself is always
         // live on the engine; without a drafter it just observes.
         if let Some(db_arc) = mem_db_for_router.clone() {
-            // `$WAYLAND_HOME` resolution: prefer the explicit env var,
-            // fall back to `~/.wayland`. Matches the pattern used elsewhere
+            // `$APEXROUTER_CLI_HOME` resolution: prefer the explicit env var,
+            // fall back to `~/.apexrouter`. Matches the pattern used elsewhere
             // in the project for user-facing on-disk artifacts.
-            let wayland_home = std::env::var("WAYLAND_HOME")
+            let apexrouter_home = std::env::var("APEXROUTER_CLI_HOME")
                 .map(std::path::PathBuf::from)
                 .ok()
-                .or_else(|| dirs::home_dir().map(|h| h.join(".wayland")))
-                .unwrap_or_else(|| std::path::PathBuf::from(".wayland"));
-            let skill_dir = wayland_home.join("skills").join("auto");
+                .or_else(|| dirs::home_dir().map(|h| h.join(".apexrouter")))
+                .unwrap_or_else(|| std::path::PathBuf::from(".apexrouter"));
+            let skill_dir = apexrouter_home.join("skills").join("auto");
             let store = Arc::new(wcore_evolve::prompt_store::PromptStore::new(db_arc));
             let drafter = Arc::new(crate::auto_skill::SkillDrafter::new(skill_dir, Some(store)));
             engine.set_skill_drafter(drafter);
@@ -2178,7 +2178,7 @@ impl AgentBootstrap {
                         tracing::info!(
                             target: "wcore_agent::bootstrap",
                             count,
-                            "F-014: channels auto-registered from ~/.wayland/channels"
+                            "F-014: channels auto-registered from ~/.apexrouter/channels"
                         );
                         count
                     }
@@ -2378,7 +2378,7 @@ impl AgentBootstrap {
         }
 
         // v0.8.1 U7 — spawn the cron runner. Errors resolving the
-        // default store path (no $HOME, no $WAYLAND_HOME) are non-fatal:
+        // default store path (no $HOME, no $APEXROUTER_CLI_HOME) are non-fatal:
         // session boot continues without a runner.
         //
         // F-013 fix (CRIT, Aud-4/Aud-10/Aud-11): wire a real skill_sink so

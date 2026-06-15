@@ -1,6 +1,6 @@
 //! Anthropic prompt cache tier picker (5m vs 1h ephemeral cache_control).
 //!
-//! Ported from wayland-hermes (MIT, Nous Research):
+//! Ported from apexrouter-hermes (MIT, Nous Research):
 //!   `agent/agent/prompt_caching.py` :: `apply_anthropic_cache_control`
 //!
 //! Hermes hard-codes `cache_ttl: "5m"` or `"1h"` at call sites. This module

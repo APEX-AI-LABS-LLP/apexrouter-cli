@@ -69,7 +69,7 @@ pub struct CuaPolicy {
     /// Plugin id that owns this policy (composite key for the persistent
     /// seen-apps store — `(plugin_id, app_id)`). Set by the host when
     /// the policy is loaded from a `CuaToolSpec`. Defaults to a
-    /// "wayland-cua" fallback so tests need not always set it explicitly.
+    /// "apexrouter-cua" fallback so tests need not always set it explicitly.
     #[serde(default = "default_plugin_id")]
     pub plugin_id: String,
 
@@ -98,7 +98,7 @@ fn default_true() -> bool {
 }
 
 fn default_plugin_id() -> String {
-    "wayland-cua".to_string()
+    "apexrouter-cua".to_string()
 }
 
 impl Default for CuaPolicy {
@@ -139,7 +139,7 @@ impl CuaPolicy {
 
     /// Configure the on-disk path for the persistent seen-apps store.
     /// Cross-session persistence — defaults to
-    /// `dirs::data_dir()/wayland/cua/seen-apps.json`. Callers can
+    /// `dirs::data_dir()/apexrouter/cua/seen-apps.json`. Callers can
     /// override (tests, multi-host installations).
     pub fn with_seen_apps_path(self, path: PathBuf) -> Self {
         *self.state.seen_apps_path.lock() = Some(path);
@@ -148,13 +148,13 @@ impl CuaPolicy {
     }
 
     /// Default on-disk path for the seen-apps store.
-    /// `<data_dir>/wayland/cua/seen-apps.json` — falls back to
-    /// `<tmp_dir>/wayland/cua/seen-apps.json` when `dirs::data_dir`
+    /// `<data_dir>/apexrouter/cua/seen-apps.json` — falls back to
+    /// `<tmp_dir>/apexrouter/cua/seen-apps.json` when `dirs::data_dir`
     /// returns None (rare; sandboxed test environments).
     pub fn default_seen_apps_path() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(std::env::temp_dir)
-            .join("wayland")
+            .join("apexrouter")
             .join("cua")
             .join("seen-apps.json")
     }
@@ -269,7 +269,7 @@ impl CuaPolicy {
     /// **Fail-closed on unknown app:** when the frontmost app id is
     /// empty/unknown AND any app-scoped rule is configured, the op
     /// routes to `Suspend` (HITL approval) rather than `Allow`. On
-    /// Windows/Wayland `frontmost_app()` has no production probe and on
+    /// Windows/ApexRouter `frontmost_app()` has no production probe and on
     /// macOS the `osascript` probe can fail (missing TCC grant, login
     /// window), so an empty id is the common case — treating it as
     /// "no app restrictions apply" would silently disable forbidden-app
@@ -346,7 +346,7 @@ impl CuaPolicy {
         // empty/unknown frontmost-app id while any app-scoped rule is
         // configured, we cannot prove the op targets a permitted app, so
         // route to Suspend (require approval). This closes the H-6/M-17
-        // hole where a missing frontmost probe (Windows/Wayland have no
+        // hole where a missing frontmost probe (Windows/ApexRouter have no
         // production probe; macOS osascript can fail) yielded an empty id
         // that skipped all app-scoped gates and silently Allowed.
         if app_lc.is_empty() && self.has_app_scoped_rule() {
@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn empty_app_id_with_forbidden_apps_fails_closed_to_suspend() {
         // H-6/M-17 regression: an unresolved frontmost app id (the
-        // production case on Windows/Wayland, and on macOS when the
+        // production case on Windows/ApexRouter, and on macOS when the
         // osascript probe fails) must NOT skip the configured
         // forbidden-app gate and silently Allow. It must Suspend.
         let p = CuaPolicy {

@@ -5,7 +5,7 @@
 //!
 //! - **Doctor** — system dependency + environment health. Runs the real
 //!   [`crate::doctor::collect`] probe on `on_enter` and the `r` re-run
-//!   key; the same data that `wayland-core --doctor` prints.
+//!   key; the same data that `apexrouter-cli --doctor` prints.
 //! - **Cost** — session token usage and spend, read live from
 //!   [`App::cost`] (populated by the protocol bridge from
 //!   [`ProtocolEvent::SessionCost`] events).
@@ -65,8 +65,8 @@ impl NotifyKind {
     /// The human-readable notification body for this kind.
     fn message(self) -> &'static str {
         match self {
-            NotifyKind::ApprovalNeeded => "wayland-core: approval needed",
-            NotifyKind::TaskFinished => "wayland-core: task finished",
+            NotifyKind::ApprovalNeeded => "apexrouter-cli: approval needed",
+            NotifyKind::TaskFinished => "apexrouter-cli: task finished",
         }
     }
 }
@@ -239,7 +239,7 @@ const TOOL_GATES: &[ToolGate] = &[
     },
     ToolGate {
         name: "web_fetch",
-        env_var: "WAYLAND_FETCH_ALLOWED",
+        env_var: "APEXROUTER_CLI_FETCH_ALLOWED",
     },
     ToolGate {
         name: "transcribe_audio",
@@ -1986,7 +1986,7 @@ mod tests {
                     id: "user_role.md".into(),
                     path: std::path::PathBuf::from("user_role.md"),
                     category: "user".into(),
-                    summary: "user role — Rust engineer on wayland-core".into(),
+                    summary: "user role — Rust engineer on apexrouter-cli".into(),
                 },
                 MemoryItem {
                     id: "project_context.md".into(),

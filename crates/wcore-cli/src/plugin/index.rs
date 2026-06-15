@@ -2,7 +2,7 @@
 //!
 //! v0.7.0 1.E.1: defines the on-the-wire schema, a signed-index
 //! verifier, and a TTL-backed disk cache. The plugin-install wiring
-//! that consumes this (`wayland-core plugin install <name>` searches
+//! that consumes this (`apexrouter-cli plugin install <name>` searches
 //! the index → resolves → clones+verifies+installs) lands as a Phase
 //! 2 follow-up.
 //!
@@ -18,14 +18,14 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 /// Bundled marketplace pubkey, hex-encoded (32 bytes / 64 hex chars).
-/// Placeholder until Sean ships the real `FerroxLabs/wayland-plugin-
+/// Placeholder until Sean ships the real `APEX-AI-LABS-LLP/apexrouter-plugin-
 /// index` signing key. Tests override this via [`IndexVerifier::with_pubkey`].
 ///
 /// F-021 (security): [`IndexVerifier::bundled`] refuses to construct a verifier
 /// from the all-zeros placeholder at runtime. The all-zeros key is the ed25519
 /// identity point — signatures against it can be forged without a secret, so
 /// using it as the marketplace trust root would neutralize the entire signing
-/// chain. Replace this constant with the real FerroxLabs signing pubkey
+/// chain. Replace this constant with the real APEX-AI-LABS-LLP signing pubkey
 /// before any user-facing marketplace verification path is shipped.
 pub const INDEX_PUBKEY_HEX: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
@@ -106,7 +106,7 @@ impl IndexVerifier {
         if INDEX_PUBKEY_HEX.bytes().all(|b| b == b'0') {
             return Err(IndexError::BadPubKey(
                 "INDEX_PUBKEY_HEX is the all-zeros placeholder. Replace it with the real \
-                 FerroxLabs signing pubkey before using the marketplace verifier. (F-021)"
+                 APEX-AI-LABS-LLP signing pubkey before using the marketplace verifier. (F-021)"
                     .into(),
             ));
         }
@@ -200,12 +200,12 @@ impl IndexCache {
         }
     }
 
-    /// Default cache path: `$HOME/.wayland/index.json`. Falls back to
+    /// Default cache path: `$HOME/.apexrouter/index.json`. Falls back to
     /// the platform temp dir if `$HOME` is unset.
     pub fn default_path() -> PathBuf {
         match std::env::var_os("HOME") {
-            Some(h) => Path::new(&h).join(".wayland").join("index.json"),
-            None => std::env::temp_dir().join("wayland-index.json"),
+            Some(h) => Path::new(&h).join(".apexrouter").join("index.json"),
+            None => std::env::temp_dir().join("apexrouter-index.json"),
         }
     }
 
@@ -265,8 +265,8 @@ mod tests {
         let body = IndexBody {
             schema_version: "1.0".to_string(),
             plugins: vec![IndexEntry {
-                name: "wayland-channel-matrix".to_string(),
-                repo: "github://wayland-plugins/matrix".to_string(),
+                name: "apexrouter-channel-matrix".to_string(),
+                repo: "github://apexrouter-plugins/matrix".to_string(),
                 tag: "v1.0.0".to_string(),
                 sha256: "deadbeef".to_string(),
                 pubkey: "feedface".to_string(),
@@ -295,14 +295,14 @@ mod tests {
         let v = IndexVerifier::with_pubkey(verifying);
         let body = v.verify(&env).unwrap();
         assert_eq!(body.plugins.len(), 1);
-        assert_eq!(body.plugins[0].name, "wayland-channel-matrix");
+        assert_eq!(body.plugins[0].name, "apexrouter-channel-matrix");
     }
 
     #[test]
     fn tampered_body_fails_verification() {
         let (signing, verifying) = fresh_keypair();
         let mut env = fresh_envelope(&signing);
-        env.body.plugins[0].name = "wayland-channel-evil".to_string();
+        env.body.plugins[0].name = "apexrouter-channel-evil".to_string();
         let v = IndexVerifier::with_pubkey(verifying);
         let err = v.verify(&env).expect_err("expected bad-sig");
         assert!(matches!(err, IndexError::BadSignature(_)), "got {err:?}");

@@ -1,4 +1,4 @@
-//! `PluginsConfig` — `~/.wayland-core/plugins.toml` schema.
+//! `PluginsConfig` — `~/.apexrouter-cli/plugins.toml` schema.
 //!
 //! Pure data + parser. The actual file-load wiring lands in W4 alongside the
 //! interactive permission-grant UX; W2.5 ships this module so the host
@@ -73,25 +73,25 @@ mod tests {
     fn parses_full_plugins_toml() {
         let s = r#"
 [[plugin]]
-name = "wayland-ijfw"
+name = "apexrouter-ijfw"
 enabled = true
 permissions_granted = ["register_mcp_server"]
 
 [[plugin]]
-name = "wayland-browser"
+name = "apexrouter-browser"
 enabled = true
 
 [[plugin]]
-name = "wayland-ollama"
+name = "apexrouter-ollama"
 enabled = false
 "#;
         let cfg = PluginsConfig::from_toml_str(s).expect("parse");
         assert_eq!(cfg.plugin.len(), 3);
-        assert!(cfg.is_enabled("wayland-ijfw"));
-        assert!(!cfg.is_enabled("wayland-ollama"));
+        assert!(cfg.is_enabled("apexrouter-ijfw"));
+        assert!(!cfg.is_enabled("apexrouter-ollama"));
         assert!(cfg.is_enabled("nonexistent")); // default-true
         assert_eq!(
-            cfg.entry("wayland-ijfw").unwrap().permissions_granted,
+            cfg.entry("apexrouter-ijfw").unwrap().permissions_granted,
             vec!["register_mcp_server"]
         );
     }

@@ -1,6 +1,6 @@
 [package]
 name = "wcore-cli"
-description = "CLI binary for wayland-core — a multi-provider AI agent with tool orchestration"
+description = "CLI binary for apexrouter-cli — a multi-provider AI agent with tool orchestration"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ keywords = ["ai", "agent", "cli", "llm", "anthropic"]
 categories = ["command-line-utilities"]
 
 [[bin]]
-name = "wayland-core"
+name = "apexrouter-cli"
 path = "src/main.rs"
 
 # M5.4: lib target so the plugin marketplace module is callable from
@@ -114,10 +114,10 @@ humantime-serde.workspace = true
 # every `submit!` block at startup via `linkme`-style ctors as long
 # as the crate is *linked*. Removing any line below means the
 # corresponding plugin silently disappears.
-wayland-browser = { path = "../wayland-browser" }
-wayland-cua     = { path = "../wayland-cua" }
-wayland-honcho  = { path = "../wayland-honcho" }
-wayland-ollama  = { path = "../wayland-ollama" }
+apexrouter-browser = { path = "../apexrouter-browser" }
+apexrouter-cua     = { path = "../apexrouter-cua" }
+apexrouter-honcho  = { path = "../apexrouter-honcho" }
+apexrouter-ollama  = { path = "../apexrouter-ollama" }
 
 tokio.workspace  = true
 # AUDIT-D: `CancellationToken` for the TUI's cooperative turn-cancel —
@@ -186,7 +186,7 @@ wcore-egress = { workspace = true, optional = true }
 ed25519-dalek = { workspace = true }
 sha2          = { workspace = true }
 
-# `wayland-core self-update` deps (keyless Sigstore provenance via gh; R16).
+# `apexrouter-cli self-update` deps (keyless Sigstore provenance via gh; R16).
 # - `self_replace` swaps the running binary across POSIX (rename) and
 #   Windows (MoveFileExW + the running-exe-lock dance).
 # - `futures-util` streams reqwest response bytes into a file in
@@ -239,7 +239,7 @@ async-trait.workspace = true
 # WCORE_MEMORY_DIR env var; serialize against other crates that
 # touch the same env (wcore-memory/wcore-cua/wcore-browser/wcore-agent).
 serial_test.workspace = true
-# User-flow harness Layer 2/3: drive the real `wayland-core` binary
+# User-flow harness Layer 2/3: drive the real `apexrouter-cli` binary
 # through a pseudo-terminal like a human would.
 # - `portable-pty` spawns the binary attached to a PTY (so the TUI's
 #   `IsTerminal` check passes and the full-screen UI launches).

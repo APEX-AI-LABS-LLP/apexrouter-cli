@@ -1,4 +1,4 @@
-# Contributing to Wayland-Core
+# Contributing to ApexRouter-CLI
 
 ## Security-Critical Dependency Pinning
 

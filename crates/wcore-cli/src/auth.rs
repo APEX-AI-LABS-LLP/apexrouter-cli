@@ -1,4 +1,4 @@
-//! CLI surface: `wayland-core auth` — provider API-key CRUD.
+//! CLI surface: `apexrouter-cli auth` — provider API-key CRUD.
 //!
 //! Three flag-driven ops against the global `config.toml`'s
 //! `[providers.<slug>]` tables:
@@ -158,11 +158,11 @@ fn resolve_provider(arg: &str, key: &str) -> Result<Provider> {
             Detected::Ambiguous => bail!(
                 "could not autodetect the provider — this key shape is shared by \
                  several providers. Re-run with an explicit provider, e.g. \
-                 `wayland-core auth add openai <key>`"
+                 `apexrouter-cli auth add openai <key>`"
             ),
             Detected::Unknown => bail!(
                 "could not autodetect the provider from this key. Re-run with an \
-                 explicit provider, e.g. `wayland-core auth add anthropic <key>`"
+                 explicit provider, e.g. `apexrouter-cli auth add anthropic <key>`"
             ),
         };
     }
@@ -179,11 +179,11 @@ fn resolve_provider(arg: &str, key: &str) -> Result<Provider> {
 fn list_cmd(config_path: &std::path::Path) -> Result<()> {
     let doc = load_doc(config_path)?;
     let Some(providers) = providers_table(&doc) else {
-        println!("No providers configured. Add one with `wayland-core auth add <provider> <key>`.");
+        println!("No providers configured. Add one with `apexrouter-cli auth add <provider> <key>`.");
         return Ok(());
     };
     if providers.is_empty() {
-        println!("No providers configured. Add one with `wayland-core auth add <provider> <key>`.");
+        println!("No providers configured. Add one with `apexrouter-cli auth add <provider> <key>`.");
         return Ok(());
     }
     // Sort by slug for stable output.

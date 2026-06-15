@@ -1,12 +1,12 @@
 //! T3-3.6 (sub-wave 6): `text_to_speech` tool — multi-provider TTS via a
 //! pluggable [`TtsBackend`].
 //!
-//! Ported from `wayland-hermes/agent/tools/tts_tool.py` (1137 LOC).
+//! Ported from `apexrouter-hermes/agent/tools/tts_tool.py` (1137 LOC).
 //!
 //! The Python original embeds six concrete provider integrations (Edge,
 //! ElevenLabs, OpenAI, MiniMax, xAI, Mistral, Piper) plus an ffmpeg
 //! Opus-conversion post-process and an async streaming-to-speaker mode.
-//! Wayland's engine treats provider wiring as a host concern (the agent
+//! ApexRouter's engine treats provider wiring as a host concern (the agent
 //! crate / a plugin chooses an SDK and supplies credentials), so this
 //! port collapses **all seven providers behind a single trait**:
 //! [`TtsBackend::synthesize`]. The host binds the real backend at startup

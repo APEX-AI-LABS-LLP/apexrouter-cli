@@ -17,7 +17,7 @@ use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
 /// Env vars forwarded to MCP stdio children after `env_clear()`.
 ///
 /// Everything else — `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-/// `WAYLAND_VAULT_PASSPHRASE`, `AWS_SECRET_ACCESS_KEY`, etc. — is withheld.
+/// `APEXROUTER_CLI_VAULT_PASSPHRASE`, `AWS_SECRET_ACCESS_KEY`, etc. — is withheld.
 /// Per-server `env` entries from `mcp-servers.toml` are layered on top by
 /// `spawn_with_timeout` after this allowlist, so operators can explicitly
 /// forward additional variables when required. Mirrors the pattern in
@@ -364,16 +364,16 @@ impl StdioTransport {
                 cmd.env(var, val);
             }
         }
-        // Profile-home handshake: expose the canonical `~/.wayland` profile root
-        // (honouring `WAYLAND_HOME`) so plugin MCP servers route their state to
+        // Profile-home handshake: expose the canonical `~/.apexrouter` profile root
+        // (honouring `APEXROUTER_CLI_HOME`) so plugin MCP servers route their state to
         // the same directory the host and the plugin installer agree on. The host
-        // contract is the vendor-neutral `WAYLAND_PROFILE_HOME`; a plugin whose
+        // contract is the vendor-neutral `APEXROUTER_CLI_PROFILE_HOME`; a plugin whose
         // server reads a differently-named var maps it on its own side (the host
         // must not bake in any one plugin's variable name). Set after the
         // allowlist but before per-server `env`, so an explicit operator override
         // in mcp-servers.toml still wins.
         if let Some(home) = wcore_config::config::profile_home().to_str() {
-            cmd.env("WAYLAND_PROFILE_HOME", home);
+            cmd.env("APEXROUTER_CLI_PROFILE_HOME", home);
         }
         // Per-server env entries from mcp-servers.toml layered last.
         cmd.envs(env);
@@ -1089,7 +1089,7 @@ mod tests {
         let sensitive = [
             "OPENAI_API_KEY",
             "ANTHROPIC_API_KEY",
-            "WAYLAND_VAULT_PASSPHRASE",
+            "APEXROUTER_CLI_VAULT_PASSPHRASE",
             "AWS_SECRET_ACCESS_KEY",
         ];
         for var in sensitive {
@@ -1126,7 +1126,7 @@ mod tests {
         }
         // Simulate per-server env entry.
         cmd.env("MCP_EXPLICIT_VAR", "explicit_value");
-        // Do NOT forward "WAYLAND_TEST_SECRET_CANARY" — it must not appear.
+        // Do NOT forward "APEXROUTER_CLI_TEST_SECRET_CANARY" — it must not appear.
         // (We don't set it in the parent process env here to avoid the
         //  multi-thread set_var unsafety; we simply assert the child doesn't
         //  have an entry we never added.)
@@ -1150,7 +1150,7 @@ mod tests {
         assert!(buf.contains("PATH="), "PATH missing from child env: {buf}");
         // Secret canary must NOT be present — we never added it.
         assert!(
-            !buf.contains("WAYLAND_TEST_SECRET_CANARY"),
+            !buf.contains("APEXROUTER_CLI_TEST_SECRET_CANARY"),
             "canary appeared unexpectedly: {buf}"
         );
     }
@@ -1158,29 +1158,29 @@ mod tests {
     /// B1 — the profile-home handshake reaches the spawned MCP child.
     ///
     /// Drives the real `StdioTransport::spawn` path against a tiny sh "server"
-    /// that writes `$WAYLAND_PROFILE_HOME` and a marker carrying any
-    /// `$IJFW_WAYLAND_PROFILE_HOME` to a file on its first stdin line. We pin
-    /// `WAYLAND_HOME` to a tempdir so the expected value is deterministic, then
+    /// that writes `$APEXROUTER_CLI_PROFILE_HOME` and a marker carrying any
+    /// `$IJFW_APEXROUTER_CLI_PROFILE_HOME` to a file on its first stdin line. We pin
+    /// `APEXROUTER_CLI_HOME` to a tempdir so the expected value is deterministic, then
     /// assert the child saw the vendor-neutral var (proving the injection
     /// survives `env_clear()`) AND that the host did NOT bake in any plugin's
     /// `IJFW_*` alias — the host stays vendor-neutral.
     #[tokio::test]
-    #[serial_test::serial(wayland_home_env)]
+    #[serial_test::serial(apexrouter_home_env)]
     async fn b1_profile_home_reaches_spawned_child() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let out_path = tmp.path().join("env-dump");
         let wh = tmp.path().join("profile-root");
 
-        let prev = std::env::var_os("WAYLAND_HOME");
+        let prev = std::env::var_os("APEXROUTER_CLI_HOME");
         unsafe {
-            std::env::set_var("WAYLAND_HOME", &wh);
+            std::env::set_var("APEXROUTER_CLI_HOME", &wh);
         }
 
         // Server: on the first stdin line, dump the neutral profile-home var plus
         // a bracketed marker for the (expected-absent) IJFW alias, emit one
         // JSON-RPC-shaped line so the transport's reader is satisfied, then exit.
         let script = format!(
-            "read line; printf '%s\\n[ijfw:%s]\\n' \"$WAYLAND_PROFILE_HOME\" \"$IJFW_WAYLAND_PROFILE_HOME\" > {dump}; \
+            "read line; printf '%s\\n[ijfw:%s]\\n' \"$APEXROUTER_CLI_PROFILE_HOME\" \"$IJFW_APEXROUTER_CLI_PROFILE_HOME\" > {dump}; \
              printf '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{}}}}\\n'",
             dump = out_path.display()
         );
@@ -1196,8 +1196,8 @@ mod tests {
         let _ = transport.close().await;
 
         let restore = || match &prev {
-            Some(v) => unsafe { std::env::set_var("WAYLAND_HOME", v) },
-            None => unsafe { std::env::remove_var("WAYLAND_HOME") },
+            Some(v) => unsafe { std::env::set_var("APEXROUTER_CLI_HOME", v) },
+            None => unsafe { std::env::remove_var("APEXROUTER_CLI_HOME") },
         };
 
         let dumped = std::fs::read_to_string(&out_path);
@@ -1209,7 +1209,7 @@ mod tests {
         assert_eq!(
             lines.next().unwrap_or_default(),
             expected,
-            "WAYLAND_PROFILE_HOME not seen by child: {dumped:?}"
+            "APEXROUTER_CLI_PROFILE_HOME not seen by child: {dumped:?}"
         );
         // The host must NOT set any plugin-specific alias — the marker is empty.
         assert_eq!(

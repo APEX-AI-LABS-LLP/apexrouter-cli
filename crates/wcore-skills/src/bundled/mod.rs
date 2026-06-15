@@ -113,18 +113,18 @@ pub fn init_bundled_skills() {
 
 /// Returns the extraction directory for a bundled skill's reference files.
 ///
-/// Path: `$TMPDIR/wayland-core-bundled-skills-{pid}/{skill_name}`
+/// Path: `$TMPDIR/apexrouter-cli-bundled-skills-{pid}/{skill_name}`
 /// Uses PID as a per-process nonce to prevent symlink pre-creation attacks.
 pub fn get_bundled_skill_extract_dir(skill_name: &str) -> PathBuf {
     let pid = std::process::id();
     let tmp = std::env::temp_dir();
-    tmp.join(format!("wayland-core-bundled-skills-{pid}"))
+    tmp.join(format!("apexrouter-cli-bundled-skills-{pid}"))
         .join(skill_name)
 }
 
 /// F-086: remove the per-process bundled-skill extraction root directory.
 ///
-/// Called at graceful shutdown to clean up the `$TMPDIR/wayland-core-bundled-skills-{pid}/`
+/// Called at graceful shutdown to clean up the `$TMPDIR/apexrouter-cli-bundled-skills-{pid}/`
 /// directory that `extract_bundled_skill_files` creates. Best-effort: failures
 /// are silently ignored (the OS will eventually purge `$TMPDIR`).
 ///
@@ -132,7 +132,7 @@ pub fn get_bundled_skill_extract_dir(skill_name: &str) -> PathBuf {
 /// path to prevent temp-dir accumulation across restarts.
 pub fn cleanup_bundled_skill_extract_dir() {
     let pid = std::process::id();
-    let root = std::env::temp_dir().join(format!("wayland-core-bundled-skills-{pid}"));
+    let root = std::env::temp_dir().join(format!("apexrouter-cli-bundled-skills-{pid}"));
     if root.is_dir() {
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -165,7 +165,7 @@ pub async fn extract_bundled_skill_files(
         Err(e) => {
             // Non-fatal: log and degrade gracefully (skill runs without skill_root)
             eprintln!(
-                "[wayland-core] failed to extract bundled skill '{}' to {}: {}",
+                "[apexrouter-cli] failed to extract bundled skill '{}' to {}: {}",
                 skill_name,
                 dir.display(),
                 e

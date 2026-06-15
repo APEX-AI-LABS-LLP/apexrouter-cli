@@ -2,7 +2,7 @@
 //!
 //! Hosts the **server side** of the Model Context Protocol — accepting
 //! JSON-RPC `initialize`, `tools/list`, and `tools/call` from upstream
-//! clients (other agents, IDEs, the Wayland desktop host). Transports live in
+//! clients (other agents, IDEs, the ApexRouter desktop host). Transports live in
 //! `crate::transports` (stdio + SSE).
 //!
 //! ## Why server-side types live here
@@ -168,8 +168,8 @@ pub trait ServerToolExecutor: Send + Sync {
 /// that contract. Real tool wiring (memory + tool registry) is deferred to
 /// v0.6.3+; until then this returns an empty Vec.
 ///
-/// Defense in depth: the four known stub names (`wayland_memory_recall`,
-/// `wayland_memory_search`, `wayland_tool_list`, `wayland_tool_describe`)
+/// Defense in depth: the four known stub names (`apexrouter_memory_recall`,
+/// `apexrouter_memory_search`, `apexrouter_tool_list`, `apexrouter_tool_describe`)
 /// are still recognized by `handle_tools_call` and answered with
 /// `NOT_IMPLEMENTED` rather than `METHOD_NOT_FOUND`, so a client that
 /// hardcoded those names against an earlier preview build gets the more
@@ -181,10 +181,10 @@ pub fn default_tool_set() -> Vec<ServerToolSpec> {
 /// Stub tool names that are recognized for the NOT_IMPLEMENTED handler
 /// path but NOT advertised via `tools/list`. See `default_tool_set` docs.
 const KNOWN_STUB_NAMES: &[&str] = &[
-    "wayland_memory_recall",
-    "wayland_memory_search",
-    "wayland_tool_list",
-    "wayland_tool_describe",
+    "apexrouter_memory_recall",
+    "apexrouter_memory_search",
+    "apexrouter_tool_list",
+    "apexrouter_tool_describe",
 ];
 
 /// MCP server. Construct via `McpServer::new(...)` then drive it from a
@@ -428,7 +428,7 @@ mod tests {
             .handle_request(req(
                 4,
                 "tools/call",
-                Some(json!({"name": "wayland_memory_recall"})),
+                Some(json!({"name": "apexrouter_memory_recall"})),
             ))
             .await;
         let err = resp.error.expect("error");
@@ -534,7 +534,7 @@ mod tests {
             .handle_request(req(
                 6,
                 "tools/call",
-                Some(json!({"name": "wayland_memory_recall"})),
+                Some(json!({"name": "apexrouter_memory_recall"})),
             ))
             .await;
         let err = resp.error.expect("error");

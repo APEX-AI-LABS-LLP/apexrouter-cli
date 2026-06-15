@@ -1,4 +1,4 @@
-//! OAuth token storage at `~/.wayland/oauth/{provider}.json`.
+//! OAuth token storage at `~/.apexrouter/oauth/{provider}.json`.
 //!
 //! v0.9.0 B0 chose a file-backed default (not the keyring) because
 //! `wcore-config::credentials::CredentialsBackend` is configured at
@@ -24,17 +24,17 @@ pub enum OAuthStorageError {
 }
 
 /// File-backed storage for OAuth tokens. Each provider gets its own
-/// file under `~/.wayland/oauth/`.
+/// file under `~/.apexrouter/oauth/`.
 pub struct OAuthStorage {
     root: PathBuf,
 }
 
 impl OAuthStorage {
-    /// Construct using the user's home directory. Creates `~/.wayland/oauth/`
+    /// Construct using the user's home directory. Creates `~/.apexrouter/oauth/`
     /// with mode 0700 on Unix on first use.
     pub fn from_home() -> Result<Self, OAuthStorageError> {
         let home = dirs::home_dir().ok_or(OAuthStorageError::NoHome)?;
-        Self::at_root(home.join(".wayland").join("oauth"))
+        Self::at_root(home.join(".apexrouter").join("oauth"))
     }
 
     /// Construct at an explicit root (used in tests).

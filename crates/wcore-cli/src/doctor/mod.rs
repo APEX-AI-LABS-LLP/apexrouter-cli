@@ -1,4 +1,4 @@
-//! `wayland-core --doctor` — system dependency probe.
+//! `apexrouter-cli --doctor` — system dependency probe.
 //!
 //! Closes debt-register A.5: Linux Wayland CUA needs `wlrctl` + `grim` on
 //! `PATH`; missing binaries surface as typed `CuaError::Backend` at runtime
@@ -31,7 +31,7 @@ use wcore_config::shell::shell_command_argv;
 /// [`collect`] then prints, so the two surfaces never drift.
 #[derive(Debug)]
 pub struct DoctorReport {
-    /// The binary version, used in the `wayland-core doctor v…` banner.
+    /// The binary version, used in the `apexrouter-cli doctor v…` banner.
     pub version: String,
     /// The check rows, in display order.
     pub checks: Vec<CheckResult>,
@@ -89,7 +89,7 @@ pub async fn collect() -> DoctorReport {
 pub async fn run() -> ExitCode {
     let report = collect().await;
     let version = &report.version;
-    println!("wayland-core doctor v{version}\n");
+    println!("apexrouter-cli doctor v{version}\n");
 
     let checks = &report.checks;
 
@@ -277,7 +277,7 @@ fn check_wayland_display() -> CheckResult {
         _ => CheckResult {
             label: "WAYLAND_DISPLAY",
             outcome: Outcome::Warn {
-                detail: "not set — Wayland CUA backend unavailable".into(),
+                detail: "not set — ApexRouter CUA backend unavailable".into(),
                 hints: vec![
                     "log in to a Wayland session (Sway, GNOME on Wayland, KDE on Wayland)".into(),
                 ],
@@ -298,7 +298,7 @@ fn check_x_display() -> CheckResult {
             label: "X DISPLAY",
             outcome: Outcome::Warn {
                 detail: "not set — X11 CUA backend unavailable".into(),
-                hints: vec!["log in to an X11 session, or start Xwayland".into()],
+                hints: vec!["log in to an X11 session, or start XWayland".into()],
             },
         },
     }
@@ -309,7 +309,7 @@ fn check_macos_accessibility_manual() -> CheckResult {
         label: "macOS Accessibility",
         outcome: Outcome::Manual {
             hint: "verify in System Settings -> Privacy & Security -> Accessibility \
-                   (wayland-core / Terminal / iTerm must be enabled to use CUA)"
+                   (apexrouter-cli / Terminal / iTerm must be enabled to use CUA)"
                 .into(),
         },
     }

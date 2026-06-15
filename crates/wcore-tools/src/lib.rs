@@ -19,14 +19,14 @@ pub mod bash;
 pub mod bash_compact;
 // T3-3.2.1: pure-string binary extension filter ported from hermes (sub-wave 2).
 pub mod binary_extensions;
-// T3-3.1.1: clarify_tool ported from wayland-hermes (sub-wave 1).
+// T3-3.1.1: clarify_tool ported from apexrouter-hermes (sub-wave 1).
 pub mod clarify;
 // W8a A.3: ToolContext threaded into every tool dispatch (cancel + vfs + sink).
 pub mod context;
 // T3-3.1.8: per-tool opt-in JSON call log (port of hermes debug_helpers).
 pub mod debug_helpers;
 // T3-3.4 (sub-wave 4): env var passthrough registry — HELPER. Ports
-// `wayland-hermes/agent/tools/env_passthrough.py`. Skill-declared
+// `apexrouter-hermes/agent/tools/env_passthrough.py`. Skill-declared
 // `required_environment_variables` (plus host config) survive
 // sandboxed sub-process env stripping in BashTool / ScriptTool.
 pub mod env_passthrough;
@@ -41,7 +41,7 @@ pub mod edit;
 pub mod email_parse_tool;
 pub mod file_cache;
 // T3-3.2.2: shared file-safety policy (write deny list + skill-hub read
-// block) ported from `wayland-hermes/agent/tools/file_safety.py`.
+// block) ported from `apexrouter-hermes/agent/tools/file_safety.py`.
 pub mod file_safety;
 // T3-3.2.3: cross-agent file state coordination (port of hermes file_state.py).
 pub mod file_state;
@@ -61,11 +61,11 @@ pub mod git_commit_message;
 // T4 (v0.6.3 Tier 2B): GitLab REST API v4 tool — issue/MR/file read +
 // note posts via a pluggable GitLabBackend (NullGitLabBackend fails
 // loud, NO-STUBS). Configurable base URL for self-hosted GitLab.
-// Ported from `wayland-hermes/agent/tools/gitlab_tool.py`.
+// Ported from `apexrouter-hermes/agent/tools/gitlab_tool.py`.
 pub mod gitlab_tool;
 pub mod glob;
 // T3-3.7.3 (sub-wave 7): Google Meet conferencing tool ported from
-// `wayland-hermes/agent/tools/google_meet_tool.py`.
+// `apexrouter-hermes/agent/tools/google_meet_tool.py`.
 pub mod google_meet_tool;
 pub mod grep;
 // T3-3.1.5: per-thread interrupt signaling (port of hermes interrupt.py).
@@ -91,7 +91,7 @@ pub mod moa;
 // (NullNotionBackend fails loud, NO-STUBS). Mirrors github_tool.
 pub mod notion_tool;
 // T3-3.3.4 (sub-wave 4): Office-side skill enable/disable runtime (HELPER)
-// ported from `wayland-hermes/agent/tools/office_runtime.py`. Manages
+// ported from `apexrouter-hermes/agent/tools/office_runtime.py`. Manages
 // materialization of optional skill bundles under the user's skills
 // directory in response to Desktop-driven enable/disable toggles.
 pub mod office_runtime;
@@ -109,7 +109,7 @@ pub mod patch_parser;
 // is off so the schema stays stable across build configs.
 pub mod pdf_tool;
 // T3-3.8 (sub-wave 8): Piper TTS voice + binary downloader (HELPER) ported
-// from `wayland-hermes/agent/tools/piper_download.py`. Pluggable
+// from `apexrouter-hermes/agent/tools/piper_download.py`. Pluggable
 // ModelDownloader + BinaryExtractor traits (Null = fail-loud,
 // Capturing = test double); not surfaced as a tool because `tts_tool`
 // explicitly delegates Piper voice/binary acquisition to the backend.
@@ -135,10 +135,10 @@ pub mod repomap;
 pub mod schema_sanitizer;
 pub mod script;
 // T3-3.1.4: cross-channel `send_message` tool (port of
-// wayland-hermes/agent/tools/send_message_tool.py).
+// apexrouter-hermes/agent/tools/send_message_tool.py).
 pub mod send_message;
 // T3-3.7 (sub-wave 7): Discord server tool — port of
-// `wayland-hermes/agent/tools/discord_tool.py`. Dispatch surface only;
+// `apexrouter-hermes/agent/tools/discord_tool.py`. Dispatch surface only;
 // host wires a `DiscordBackend` implementation for real REST I/O.
 // NullDiscordBackend fails loud (NO-STUBS). Composes url_safety for
 // defense-in-depth on string fields that could carry URLs.
@@ -150,7 +150,7 @@ pub mod discord_tool;
 pub mod github_tool;
 // T3-3.7 (sub-wave 7): cronjob scheduled-task management tool —
 // pluggable CronScheduler seam (NullCronScheduler fails loud). Ported
-// from `wayland-hermes/agent/tools/cronjob_tools.py`.
+// from `apexrouter-hermes/agent/tools/cronjob_tools.py`.
 pub mod cronjob_tools;
 // T3-3.1.7: SessionSearchTool — past-session recall via MemoryApi.
 pub mod session_search;
@@ -158,7 +158,7 @@ pub mod session_search;
 // truncation. Postgres/MySQL are out of scope (would be `sql-extra`-gated).
 pub mod sql_query_tool;
 // T3-3.7 (sub-wave 7): Tencent Yuanbao platform toolset
-// (port of `wayland-hermes/agent/tools/yuanbao_tools.py`). Single
+// (port of `apexrouter-hermes/agent/tools/yuanbao_tools.py`). Single
 // `YuanbaoTool` with an `action` discriminator dispatches all five
 // hermes operations (group_info / group_members / search_sticker /
 // send_sticker / send_dm) through a host-supplied YuanbaoBackend.
@@ -166,15 +166,15 @@ pub mod yuanbao_tools;
 // T3-3.3.3: Tirith pre-exec security scanner wrapper (HELPER) ported from
 // hermes tirith_security.py. Auto-installer is documented out-of-scope.
 pub mod tirith_security;
-// T3-3.1.2: in-memory planning/task list tool ported from wayland-hermes.
+// T3-3.1.2: in-memory planning/task list tool ported from apexrouter-hermes.
 pub mod todo;
 // T3-3.3.3: configurable tool-output truncation limits (HELPER) — port of
-// `wayland-hermes/agent/tools/tool_output_limits.py`. Adds user-tunable
+// `apexrouter-hermes/agent/tools/tool_output_limits.py`. Adds user-tunable
 // `max_bytes` / `max_lines` / `max_line_length` knobs that complement the
 // existing per-tool `max_result_size()` and `truncate_utf8()` primitives.
 pub mod tool_output_limits;
 // T3-3.3.3: tool-result persistence helper (port of
-// wayland-hermes/agent/tools/tool_result_storage.py).
+// apexrouter-hermes/agent/tools/tool_result_storage.py).
 pub mod tool_result_storage;
 pub mod tool_search;
 // T3-3.3.3: SSRF / private-network URL safety helper (port of hermes
@@ -188,7 +188,7 @@ pub mod vfs;
 pub mod video_analyze_tool;
 // T3-3.6 (sub-wave 6): image_generate tool — text-to-image generation
 // via a pluggable ImageGenerationBackend (NullImageGenerationBackend
-// fails loud). Ported from `wayland-hermes/agent/tools/image_generation_tool.py`.
+// fails loud). Ported from `apexrouter-hermes/agent/tools/image_generation_tool.py`.
 pub mod image_generation_tool;
 // T8 (v0.6.3 Tier 2B): image_inspect tool — read-only image metadata
 // (dimensions / format / color type via `image`; EXIF via
@@ -197,51 +197,51 @@ pub mod image_generation_tool;
 pub mod image_inspect_tool;
 // T3-3.6 (sub-wave 6): text_to_speech tool — multi-provider TTS via a
 // pluggable TtsBackend (NullTtsBackend fails loud). Ported from
-// `wayland-hermes/agent/tools/tts_tool.py`.
+// `apexrouter-hermes/agent/tools/tts_tool.py`.
 pub mod tts_tool;
 // T3-3.3.3: website blocklist helper ported from
-// `wayland-hermes/agent/tools/website_policy.py` (sub-wave 3).
+// `apexrouter-hermes/agent/tools/website_policy.py` (sub-wave 3).
 pub mod website_policy;
 // T3-3.5: vision_analyze tool ported from
-// `wayland-hermes/agent/tools/vision_tools.py` (sub-wave 5).
+// `apexrouter-hermes/agent/tools/vision_tools.py` (sub-wave 5).
 pub mod vision_tools;
 // T3-3.8 (sub-wave 8): web tool — search/extract/crawl via a pluggable
 // WebBackend (NullWebBackend fails loud). Ported from
-// `wayland-hermes/agent/tools/web_tools.py`. Composes url_safety +
+// `apexrouter-hermes/agent/tools/web_tools.py`. Composes url_safety +
 // website_policy for SSRF + blocklist gating before backend dispatch.
 pub mod web_tools;
 // Wave RC (2026-05-23): simple HTTP-GET tool — `WebFetch`. The Browser
 // tool requires a Camoufox / Chromium sidecar that is NOT installed on a
-// fresh wayland-core, so a user asking "fetch this URL" used to watch a
+// fresh apexrouter-cli, so a user asking "fetch this URL" used to watch a
 // 60s spinner. WebFetch is a plain HTTP GET via a `FetchBackend` seam
 // (host wires `HttpFetchBackend` in `wcore-agent`); it is what the model
 // reaches for by default for read-only page fetches now.
 pub mod web_fetch;
 // T3-3.6: transcribe_audio tool ported from
-// `wayland-hermes/agent/tools/transcription_tools.py` (sub-wave 6).
+// `apexrouter-hermes/agent/tools/transcription_tools.py` (sub-wave 6).
 // Pluggable TranscriptionBackend + AudioFetcher seams; NullBackend
 // fails loud (NO-STUBS); composes url_safety + website_policy for
 // URL inputs. Mirrors the vision_tools seam pattern.
 pub mod transcription_tools;
 // T3-3.6 (sub-wave 6): voice_mode session helper — pluggable
 // AudioRecorder / TranscriptionBackend / AudioPlayer seams. Ported
-// from `wayland-hermes/agent/tools/voice_mode.py`.
+// from `apexrouter-hermes/agent/tools/voice_mode.py`.
 pub mod voice_mode;
 // T3-3.7 (sub-wave 7): Spotify toolset — seven agent-facing tools
 // sharing a pluggable SpotifyBackend (NullSpotifyBackend fails loud).
-// Ported from `wayland-hermes/agent/tools/spotify_tool.py`.
+// Ported from `apexrouter-hermes/agent/tools/spotify_tool.py`.
 pub mod spotify_tool;
 // T3-3.7 (sub-wave 7): homeassistant tool — smart-home control via a
 // pluggable HomeAssistantBackend (NullHomeAssistantBackend fails loud).
-// Ported from `wayland-hermes/agent/tools/homeassistant_tool.py`.
+// Ported from `apexrouter-hermes/agent/tools/homeassistant_tool.py`.
 pub mod homeassistant_tool;
-// T3-3.8 (sub-wave 8): wayland self-introspection toolset
-// (`wayland_status` + `wayland_telemetry_query`) ported from
-// `wayland-hermes/agent/tools/wayland_introspection.py`.
-// Pluggable WaylandIntrospectionBackend seam; NullBackend fails loud
+// T3-3.8 (sub-wave 8): apexrouter self-introspection toolset
+// (`apexrouter_status` + `apexrouter_telemetry_query`) ported from
+// `apexrouter-hermes/agent/tools/apexrouter_introspection.py`.
+// Pluggable ApexRouterIntrospectionBackend seam; NullBackend fails loud
 // (NO-STUBS). Two tools share one backend so the
-// `wayland_introspection` toolset disables as a unit.
-pub mod wayland_introspection;
+// `apexrouter_introspection` toolset disables as a unit.
+pub mod apexrouter_introspection;
 pub mod write;
 
 pub use moa::{

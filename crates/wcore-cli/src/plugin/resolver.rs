@@ -90,7 +90,7 @@ impl Resolver for LocalFileResolver {
 /// `https://api.github.com/repos/<org>/<name>/releases/latest`.
 ///
 /// The `org` is taken verbatim from the `--source github://<org>` CLI
-/// flag; today's locked default is `FerroxLabs`.
+/// flag; today's locked default is `APEX-AI-LABS-LLP`.
 pub struct GitHubReleasesResolver {
     pub org: String,
 }
@@ -124,7 +124,7 @@ impl Resolver for GitHubReleasesResolver {
         validate_plugin_name(name)?;
         let url = self.release_api_url(name)?;
         let client = reqwest::blocking::Client::builder()
-            .user_agent(concat!("wayland-core/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("apexrouter-cli/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| PluginCliError::Network(e.to_string()))?;

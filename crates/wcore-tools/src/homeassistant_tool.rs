@@ -1,9 +1,9 @@
 //! T3-3.7 -- `homeassistant` smart-home tool.
 //!
-//! Ported from `wayland-hermes/agent/tools/homeassistant_tool.py` (MIT).
+//! Ported from `apexrouter-hermes/agent/tools/homeassistant_tool.py` (MIT).
 //! The Python original exposes four LLM-callable tools -- `ha_list_entities`,
 //! `ha_get_state`, `ha_list_services`, `ha_call_service` -- that each talk
-//! directly to the Home Assistant REST API via `aiohttp`. Wayland's
+//! directly to the Home Assistant REST API via `aiohttp`. ApexRouter's
 //! engine deliberately ships no embedded HTTP client for vendor
 //! integrations; the host wires a concrete backend at registration time.
 //!

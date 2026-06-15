@@ -16,7 +16,7 @@ fn synth_trace(touched: &[&str]) -> TurnTrace {
         cost_usd: 0.01,
         tool_calls: vec![],
         hook_actions: vec![],
-        source_product: "wayland-core".into(),
+        source_product: "apexrouter-cli".into(),
     };
     for p in touched {
         t.tool_calls.push(ToolCallTrace::new(

@@ -3,11 +3,11 @@
 //! desktop input injection.
 //!
 //! The test simulates what the engine does at boot:
-//!   1. Construct a `CuaToolSpec` (the shape `wayland-cua` would emit).
+//!   1. Construct a `CuaToolSpec` (the shape `apexrouter-cua` would emit).
 //!   2. Hand it to a `CuaToolSpecLocal` through `from_api_spec`.
 //!   3. Reify into a concrete `CuaTool` via `from_spec` (refused on
-//!      restricted Wayland; succeeds on macOS / Windows / permissive
-//!      Wayland).
+//!      restricted ApexRouter; succeeds on macOS / Windows / permissive
+//!      ApexRouter).
 //!   4. Execute a SAFE op against the resulting tool — `Wait` (pure
 //!      sleep, no platform input) and `Screenshot` (read-only,
 //!      background-clean).
@@ -30,7 +30,7 @@ use wcore_cua::op::{CuaOp, CuaOpResult};
 use wcore_cua::tool::CuaTool;
 use wcore_plugin_api::cua_spec::{CuaPolicySpec, CuaToolSpec};
 
-fn clear_wayland_env() {
+fn clear_apexrouter_env() {
     unsafe {
         std::env::remove_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE");
         std::env::remove_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED");
@@ -55,7 +55,7 @@ fn spec() -> CuaToolSpec {
 #[tokio::test]
 #[serial]
 async fn host_adapter_path_reifies_and_dispatches_safe_op() {
-    clear_wayland_env();
+    clear_apexrouter_env();
     // On Linux Wayland we need to flip permissive so audit-F7 doesn't
     // refuse registration. Other platforms ignore the env.
     unsafe { std::env::set_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE", "1") };
@@ -70,7 +70,7 @@ async fn host_adapter_path_reifies_and_dispatches_safe_op() {
     let tool: Arc<CuaTool> = match from_spec(local) {
         Ok(t) => t,
         Err(e) => {
-            clear_wayland_env();
+            clear_apexrouter_env();
             panic!("from_spec must produce a real CuaTool on supported targets; got: {e}");
         }
     };
@@ -96,7 +96,7 @@ async fn host_adapter_path_reifies_and_dispatches_safe_op() {
     );
 
     // Step 5: Screenshot is read-only; on macOS / Windows / X11 /
-    // permissive Wayland it produces a real PNG of the main display.
+    // permissive ApexRouter it produces a real PNG of the main display.
     // Some CI runners lack Screen-Recording permission (macOS) or the
     // `grim`/`xdotool` binaries (Linux) — accept the typed
     // `Backend` / `UnsupportedPlatform` error in those cases.
@@ -139,30 +139,30 @@ async fn host_adapter_path_reifies_and_dispatches_safe_op() {
         "AxTree must surface a typed gap error, not an empty stub; got {r:?}"
     );
 
-    clear_wayland_env();
+    clear_apexrouter_env();
 }
 
-/// Audit F7 e2e: a restricted Wayland compositor refuses to mint a
+/// Audit F7 e2e: a restricted ApexRouter compositor refuses to mint a
 /// CuaTool through `from_spec`. On non-Linux this test is skipped.
 #[cfg(target_os = "linux")]
 #[tokio::test]
 #[serial]
-async fn host_adapter_refuses_restricted_wayland_compositor() {
-    clear_wayland_env();
+async fn host_adapter_refuses_restricted_apexrouter_compositor() {
+    clear_apexrouter_env();
     unsafe {
         std::env::set_var("WAYLAND_DISPLAY", "wayland-test");
         std::env::set_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED", "1");
     }
     let local = from_api_spec(spec(), true);
     let r = from_spec(local);
-    clear_wayland_env();
+    clear_apexrouter_env();
     let err_str = r
         .err()
         .map(|e| e.to_string())
         .unwrap_or_else(|| "<Ok>".into());
     assert!(
-        err_str.contains("wayland compositor restricted"),
-        "expected WaylandRestricted, got: {err_str}"
+        err_str.contains("apexrouter compositor restricted"),
+        "expected ApexRouterRestricted, got: {err_str}"
     );
 }
 
@@ -171,11 +171,11 @@ async fn host_adapter_refuses_restricted_wayland_compositor() {
 #[tokio::test]
 #[serial]
 async fn host_adapter_refuses_when_capability_disabled() {
-    clear_wayland_env();
+    clear_apexrouter_env();
     unsafe { std::env::set_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE", "1") };
     let local = from_api_spec(spec(), /*advertised=*/ false);
     let r = from_spec(local);
-    clear_wayland_env();
+    clear_apexrouter_env();
     let err_str = r
         .err()
         .map(|e| e.to_string())
@@ -191,7 +191,7 @@ async fn host_adapter_refuses_when_capability_disabled() {
 #[tokio::test]
 #[serial]
 async fn reified_tool_reports_runtime_platform() {
-    clear_wayland_env();
+    clear_apexrouter_env();
     unsafe { std::env::set_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE", "1") };
     let local = from_api_spec(spec(), true);
     let tool = from_spec(local).expect("real CuaTool");
@@ -201,5 +201,5 @@ async fn reified_tool_reports_runtime_platform() {
         p, expected,
         "reified tool platform ({p:?}) must match runtime ({expected:?})"
     );
-    clear_wayland_env();
+    clear_apexrouter_env();
 }

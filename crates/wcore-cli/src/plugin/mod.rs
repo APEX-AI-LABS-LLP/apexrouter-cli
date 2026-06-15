@@ -1,6 +1,6 @@
 // M5.4: plugin marketplace subcommand.
 //
-// Wires `wayland-core plugin {install,list,available,remove}` to the
+// Wires `apexrouter-cli plugin {install,list,available,remove}` to the
 // resolver + registry + install primitives in this module.
 //
 // Routing:
@@ -9,7 +9,7 @@
 // - `--source github://<org>` uses the `GitHubReleasesResolver`. Behind
 //   the `remote-registry` feature; default ON for v0.6.
 //
-// Install root defaults to `dirs::data_dir()/wayland-core/plugins`,
+// Install root defaults to `dirs::data_dir()/apexrouter-cli/plugins`,
 // overridable via `--install-root` (handy for tests + sandbox setups).
 
 pub mod error;
@@ -28,7 +28,7 @@ pub struct PluginArgs {
     pub cmd: PluginCmd,
 
     /// Override the install root. Defaults to
-    /// `dirs::data_dir()/wayland-core/plugins`. Mostly useful for tests
+    /// `dirs::data_dir()/apexrouter-cli/plugins`. Mostly useful for tests
     /// and sandboxed setups; users normally don't touch this.
     #[arg(long, global = true)]
     pub install_root: Option<PathBuf>,
@@ -38,7 +38,7 @@ pub struct PluginArgs {
 pub enum PluginCmd {
     /// Install a plugin from the registry or a remote source.
     Install {
-        /// Plugin name (kebab-case, e.g. `wayland-honcho`).
+        /// Plugin name (kebab-case, e.g. `apexrouter-honcho`).
         name: String,
         /// Source spec. `local` reads from `--registry-dir` or the
         /// embedded default registry. `github://<org>` resolves
@@ -79,7 +79,7 @@ pub fn run(args: PluginArgs) -> anyhow::Result<()> {
             // paths cross-platform.
             let base =
                 dirs::data_dir().ok_or_else(|| anyhow::anyhow!("could not determine data_dir"))?;
-            base.join("wayland-core").join("plugins")
+            base.join("apexrouter-cli").join("plugins")
         }
     };
     match args.cmd {

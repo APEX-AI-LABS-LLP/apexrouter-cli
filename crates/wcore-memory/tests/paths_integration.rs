@@ -26,10 +26,10 @@ fn tc_2_1_default_base_dir_uses_platform_config() {
         "memory_base_dir should return Some on this platform"
     );
     let base = base.unwrap();
-    // Should end with "wayland-core" (the brand, not "claude")
+    // Should end with "apexrouter-cli" (the brand, not "claude")
     assert!(
-        base.to_string_lossy().contains("wayland-core"),
-        "base dir should use wayland-core brand: {base:?}"
+        base.to_string_lossy().contains("apexrouter-cli"),
+        "base dir should use apexrouter-cli brand: {base:?}"
     );
 
     restore_env(saved);
@@ -308,110 +308,17 @@ fn entrypoint_name_constant_is_memory_md() {
     assert_eq!(paths::ENTRYPOINT_NAME, "MEMORY.md");
 }
 
-// -- TC-2.alias: WCORE_* / AIONRS_* env alias precedence ----------------------
-//
-// Verifies the backward-compat aliasing introduced when the engine rebrand
-// landed: WCORE_MEMORY_DIR is the primary; AIONRS_MEMORY_DIR is a legacy alias.
-
-// WCORE_KEY is only consumed by the #[cfg(unix)] env-alias tests below;
-// AIONRS_KEY is consumed by env_key()/restore_env() which run on both
-// platforms (Windows tests in this file use `C:\\base` style paths
-// against the same helpers). Gate WCORE_KEY to cfg(unix) so Windows
-// clippy doesn't fire `never used`; leave AIONRS_KEY ungated.
-// (CI runs 25950354044 → 25951422906 — over-gating caused the inverse
-// problem: cannot find function `env_key` on Windows after gating
-// env_key itself, since the helpers ARE used cross-platform.)
-#[cfg(unix)]
-const WCORE_KEY: &str = "WCORE_MEMORY_DIR";
-const AIONRS_KEY: &str = "AIONRS_MEMORY_DIR";
-
-#[cfg(unix)]
-#[test]
-#[serial(env)]
-fn alias_wcore_primary_wins_when_only_wcore_set() {
-    let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
-    unsafe {
-        std::env::set_var(WCORE_KEY, "/x");
-        std::env::remove_var(AIONRS_KEY);
-    }
-
-    let base = paths::memory_base_dir();
-    assert_eq!(base, Some(PathBuf::from("/x")));
-
-    restore_pair(saved_w, saved_a);
-}
-
-#[cfg(unix)]
-#[test]
-#[serial(env)]
-fn alias_legacy_aionrs_resolved_when_wcore_unset() {
-    let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
-    unsafe {
-        std::env::remove_var(WCORE_KEY);
-        std::env::set_var(AIONRS_KEY, "/y");
-    }
-
-    let base = paths::memory_base_dir();
-    assert_eq!(base, Some(PathBuf::from("/y")));
-
-    restore_pair(saved_w, saved_a);
-}
-
-#[cfg(unix)]
-#[test]
-#[serial(env)]
-fn alias_wcore_wins_when_both_set() {
-    let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
-    unsafe {
-        std::env::set_var(WCORE_KEY, "/x");
-        std::env::set_var(AIONRS_KEY, "/y");
-    }
-
-    let base = paths::memory_base_dir();
-    assert_eq!(
-        base,
-        Some(PathBuf::from("/x")),
-        "WCORE_MEMORY_DIR must take precedence over AIONRS_MEMORY_DIR"
-    );
-
-    restore_pair(saved_w, saved_a);
-}
-
-#[cfg(unix)]
-#[test]
-#[serial(env)]
-fn alias_empty_wcore_falls_through_to_aionrs() {
-    let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
-    unsafe {
-        std::env::set_var(WCORE_KEY, "");
-        std::env::set_var(AIONRS_KEY, "/y");
-    }
-
-    let base = paths::memory_base_dir();
-    assert_eq!(
-        base,
-        Some(PathBuf::from("/y")),
-        "empty WCORE_MEMORY_DIR must fall through to AIONRS_MEMORY_DIR"
-    );
-
-    restore_pair(saved_w, saved_a);
-}
-
 // -- TC-2.v2: v2 path resolution (W5 Task A.5) --------------------------------
+
+const WCORE_KEY: &str = "WCORE_MEMORY_DIR";
 
 #[cfg(unix)]
 #[test]
 #[serial(env)]
 fn v2_global_session_audit_changelog_paths() {
     let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
     unsafe {
         std::env::set_var(WCORE_KEY, "/base");
-        std::env::remove_var(AIONRS_KEY);
     }
 
     assert_eq!(
@@ -445,17 +352,17 @@ fn v2_global_session_audit_changelog_paths() {
         ))
     );
 
-    restore_pair(saved_w, saved_a);
+    restore_single(saved_w);
 }
 
 #[test]
-fn v2_project_db_path_under_wayland_core() {
+fn v2_project_db_path_under_apexrouter_cli() {
     let root = Path::new("/home/user/project");
     let p = paths::project_db_path(root);
     let s = p.to_string_lossy();
     assert!(
-        s.ends_with(".wayland-core/memory/memory.db")
-            || s.ends_with(".wayland-core\\memory\\memory.db"),
+        s.ends_with(".apexrouter-cli/memory/memory.db")
+            || s.ends_with(".apexrouter-cli\\memory\\memory.db"),
         "{s}"
     );
     assert!(s.starts_with("/home/user/project") || s.starts_with("\\home\\user\\project"));
@@ -466,10 +373,8 @@ fn v2_project_db_path_under_wayland_core() {
 #[serial(env)]
 fn v2_session_path_sanitizes_session_id() {
     let saved_w = std::env::var(WCORE_KEY).ok();
-    let saved_a = std::env::var(AIONRS_KEY).ok();
     unsafe {
         std::env::set_var(WCORE_KEY, "/base");
-        std::env::remove_var(AIONRS_KEY);
     }
 
     let p = paths::session_db_path("weird/session id?!").unwrap();
@@ -485,16 +390,15 @@ fn v2_session_path_sanitizes_session_id() {
     );
     assert!(leaf.ends_with(".db"));
 
-    restore_pair(saved_w, saved_a);
+    restore_single(saved_w);
 }
 
 // -- Helpers ------------------------------------------------------------------
 
-// env_key + restore_env are legacy helpers used by both unix and
-// Windows path-resolution tests at the top of this file. Do not gate
-// them — see callsites at lines 18, 44, 58, 74, 107.
+// env_key + restore_env are used by both unix and
+// Windows path-resolution tests at the top of this file.
 fn env_key() -> &'static str {
-    AIONRS_KEY
+    WCORE_KEY
 }
 
 fn restore_env(saved: Option<String>) {
@@ -508,16 +412,12 @@ fn restore_env(saved: Option<String>) {
 }
 
 #[cfg(unix)]
-fn restore_pair(saved_w: Option<String>, saved_a: Option<String>) {
+fn restore_single(saved: Option<String>) {
     // SAFETY: only called from #[serial(env)] tests.
     unsafe {
-        match saved_w {
+        match saved {
             Some(v) => std::env::set_var(WCORE_KEY, v),
             None => std::env::remove_var(WCORE_KEY),
-        }
-        match saved_a {
-            Some(v) => std::env::set_var(AIONRS_KEY, v),
-            None => std::env::remove_var(AIONRS_KEY),
         }
     }
 }

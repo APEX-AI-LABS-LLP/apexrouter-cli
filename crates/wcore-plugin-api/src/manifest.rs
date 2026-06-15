@@ -17,7 +17,7 @@ use crate::registry::hooks::HookPhase;
 /// flipped engine-level capability flags (`browser_suite`,
 /// `computer_use`) based on string matching against
 /// `PluginManifest.plugin.name`. A malicious crate could set
-/// `name = "wayland-browser"` in its manifest and impersonate the
+/// `name = "apexrouter-browser"` in its manifest and impersonate the
 /// real browser plugin, gaining the host's UI capability badge
 /// without owning the underlying surface.
 ///
@@ -31,9 +31,9 @@ use crate::registry::hooks::HookPhase;
 ///   recompiling the engine.
 ///
 /// - [`PluginIdentity::PathPrefix`]: the plugin was loaded from disk
-///   under `<data_dir>/wayland/plugins/`. The host validates the path
+///   under `<data_dir>/apexrouter/plugins/`. The host validates the path
 ///   prefix at load time; a manifest claiming
-///   `name = "wayland-browser"` from anywhere else is refused.
+///   `name = "apexrouter-browser"` from anywhere else is refused.
 ///
 /// **The future (v0.3.0 path).** [`PluginIdentity::Signed`] is
 /// reserved for ed25519-signed manifests with a hardcoded
@@ -51,7 +51,7 @@ pub enum PluginIdentity {
     /// Path-prefix-verified identity — the plugin was loaded from
     /// disk under the host-controlled plugins directory. The
     /// `manifest_path` is the on-disk path; the host validates that
-    /// it starts with `<data_dir>/wayland/plugins/` at load time.
+    /// it starts with `<data_dir>/apexrouter/plugins/` at load time.
     PathPrefix { manifest_path: PathBuf },
     /// Reserved for v0.3.0 — ed25519-signed manifest with a host
     /// allowlist. Holding the door open in the type system so the
@@ -101,10 +101,10 @@ impl PluginIdentity {
     /// [`PluginIdentity::PathPrefix`] identity. Returns
     /// `PluginError::ManifestSchema` when the prefix doesn't match —
     /// a manifest from `~/Downloads/evil-browser/manifest.toml`
-    /// CANNOT claim to be the real `wayland-browser`.
+    /// CANNOT claim to be the real `apexrouter-browser`.
     ///
     /// `allowed_roots` is the set of host-trusted prefixes; in
-    /// production this is `[dirs::data_dir()/wayland/plugins/]` plus
+    /// production this is `[dirs::data_dir()/apexrouter/plugins/]` plus
     /// any test override.
     pub fn from_path_prefix(
         manifest_path: impl AsRef<Path>,
@@ -136,12 +136,12 @@ impl PluginIdentity {
     }
 
     /// Default trusted root for dynamic plugins:
-    /// `<data_dir>/wayland/plugins/`. Falls back to the system temp
+    /// `<data_dir>/apexrouter/plugins/`. Falls back to the system temp
     /// dir when `dirs::data_dir()` returns None.
     pub fn default_plugin_root() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(std::env::temp_dir)
-            .join("wayland")
+            .join("apexrouter")
             .join("plugins")
     }
 
@@ -301,7 +301,7 @@ pub struct PluginPermissions {
     pub register_rules: bool,
     pub register_mcp_server: bool,
     /// v0.6.4 Task 2.1 — gate for `ScopedUserModelRegistry`. Plugins that
-    /// supply a user-model backend (e.g. `wayland-honcho`) must set this.
+    /// supply a user-model backend (e.g. `apexrouter-honcho`) must set this.
     pub register_user_models: bool,
     pub tool_namespace: Option<String>,
     pub memory_partitions_writable: Vec<String>,

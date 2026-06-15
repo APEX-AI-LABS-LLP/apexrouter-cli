@@ -1,6 +1,6 @@
 //! T3-3.8 — OSV (Open Source Vulnerabilities) malware check.
 //!
-//! Ported from `wayland-hermes/agent/tools/osv_check.py` (155 LOC).
+//! Ported from `apexrouter-hermes/agent/tools/osv_check.py` (155 LOC).
 //!
 //! Before launching an MCP server via `npx` / `uvx` (or any analogous
 //! package-runner shim), this helper queries the OSV API to check
@@ -10,7 +10,7 @@
 //! steady stream of low-severity informational CVEs that would
 //! otherwise create noise and pressure to override the gate.
 //!
-//! Wayland's engine MUST NOT initiate raw HTTP from inside
+//! ApexRouter's engine MUST NOT initiate raw HTTP from inside
 //! `wcore-tools` (HTTP belongs to the host / `wcore-providers` /
 //! plugin layer), so the actual HTTP query is dispatched through a
 //! pluggable [`OsvBackend`] seam. Hosts wire a real backend at
@@ -488,7 +488,7 @@ impl Tool for OsvTool {
     fn category(&self) -> ToolCategory {
         // OSV check is a read-only network query against a public DB;
         // ToolCategory has no Security variant — Info is the closest fit
-        // and matches how Wayland classifies other read-only network
+        // and matches how ApexRouter classifies other read-only network
         // probes (e.g. vision_analyze, web_fetch).
         ToolCategory::Info
     }

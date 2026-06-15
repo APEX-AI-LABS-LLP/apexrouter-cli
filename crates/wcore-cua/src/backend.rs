@@ -163,7 +163,7 @@ impl AxNode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AxTree {
     /// Frontmost-app identifier (bundle id on macOS, window class on X11
-    /// / Wayland, AumId on Windows).
+    /// / ApexRouter, AumId on Windows).
     pub app_id: String,
     pub window_title: String,
     pub root: AxNode,

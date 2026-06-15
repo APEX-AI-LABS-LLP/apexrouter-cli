@@ -2,9 +2,9 @@ mod common;
 
 use std::sync::Arc;
 
-use wayland-core::agent::spawner::{AgentSpawner, SubAgentConfig};
-use wayland-core::types::llm::LlmEvent;
-use wayland-core::types::message::{StopReason, TokenUsage};
+use apexrouter-cli::agent::spawner::{AgentSpawner, SubAgentConfig};
+use apexrouter-cli::types::llm::LlmEvent;
+use apexrouter-cli::types::message::{StopReason, TokenUsage};
 use common::{MockLlmProvider, test_config};
 
 // ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ async fn test_spawn_shares_provider() {
     ]));
 
     // Both sub-agents share the same underlying provider via Arc.
-    let provider_dyn: Arc<dyn wayland-core::provider::LlmProvider> = provider;
+    let provider_dyn: Arc<dyn apexrouter-cli::provider::LlmProvider> = provider;
     let spawner = AgentSpawner::new(Arc::clone(&provider_dyn), test_config());
 
     let result1 = spawner.spawn_one(make_sub_config("seq-1")).await;

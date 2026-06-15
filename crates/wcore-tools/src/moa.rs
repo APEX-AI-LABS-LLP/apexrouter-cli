@@ -2,7 +2,7 @@
 //!
 //! Port of Wang 2024 ("Mixture-of-Agents Enhances Large Language Model
 //! Capabilities", arXiv:2406.04692) from
-//! `wayland-hermes/agent/tools/mixture_of_agents_tool.py`.
+//! `apexrouter-hermes/agent/tools/mixture_of_agents_tool.py`.
 //!
 //! The MoA pattern fans a user prompt across N *proposer* providers in
 //! parallel, concatenates their answers, then hands the bundle to an

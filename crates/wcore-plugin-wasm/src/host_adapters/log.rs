@@ -2,7 +2,7 @@
 //!
 //! Routes plugin log lines through `tracing` with the plugin name as a field.
 
-pub trait WaylandHostLog: Send + Sync {
+pub trait ApexRouterHostLog: Send + Sync {
     fn log(&self, level: &str, msg: &str);
 }
 
@@ -18,7 +18,7 @@ impl GatedHostLog {
     }
 }
 
-impl WaylandHostLog for GatedHostLog {
+impl ApexRouterHostLog for GatedHostLog {
     fn log(&self, level: &str, msg: &str) {
         match level.to_ascii_lowercase().as_str() {
             "error" => tracing::error!(plugin = %self.plugin, "{msg}"),

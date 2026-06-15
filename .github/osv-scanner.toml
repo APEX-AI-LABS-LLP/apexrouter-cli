@@ -1,4 +1,4 @@
-# OSV-Scanner config for wayland-core.
+# OSV-Scanner config for apexrouter-cli.
 #
 # Posture (verified 2026-06-02, wasmtime now 36.0.10):
 #   * 0 vulnerabilities. 0 Critical / High / Medium.

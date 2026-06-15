@@ -132,7 +132,7 @@ pub const CRASH_THRESHOLD: u8 = 3;
 
 /// Minimal env vars forwarded to subprocess plugin child processes after
 /// [`std::process::Command::env_clear`]. Everything else — including
-/// `OPENAI_API_KEY`, `WAYLAND_*`, `ANTHROPIC_*`, etc. — is withheld.
+/// `OPENAI_API_KEY`, `APEXROUTER_CLI_*`, `ANTHROPIC_*`, etc. — is withheld.
 /// Kept minimal: just enough for CLI tools to locate executables and
 /// behave correctly under different locales on every supported OS.
 ///
@@ -981,7 +981,7 @@ mod tests {
     /// env_clear() — secret vars must NOT reach the child process.
     ///
     /// Spawns a real `/bin/sh` child and prints the value of
-    /// `WAYLAND_TEST_SECRET_VAR`. Because `spawn_binary` calls
+    /// `APEXROUTER_CLI_TEST_SECRET_VAR`. Because `spawn_binary` calls
     /// `Command::env_clear()` before forwarding the allowlist, the child
     /// sees an empty string for any var not in `FORWARDED_ENV_VARS`.
     #[cfg(unix)]
@@ -991,12 +991,12 @@ mod tests {
         use tokio::io::AsyncReadExt;
 
         // Plant a secret in the engine's env.
-        let secret_var = "WAYLAND_TEST_SECRET_VAR";
+        let secret_var = "APEXROUTER_CLI_TEST_SECRET_VAR";
         let secret_val = "should-not-leak";
         // SAFETY: single-threaded test context; no concurrent env mutation.
         unsafe { std::env::set_var(secret_var, secret_val) };
 
-        // Spawn `sh -c 'printf "%s" "$WAYLAND_TEST_SECRET_VAR"'` via
+        // Spawn `sh -c 'printf "%s" "$APEXROUTER_CLI_TEST_SECRET_VAR"'` via
         // spawn_binary so the env_clear path is exercised.
         // Note: spawn_binary moves stdout into TransportSpawn.stdout, not the
         // child handle — read from result.stdout, not result.child.stdout.
@@ -1180,7 +1180,7 @@ mod tests {
         use std::path::Path;
         use tokio::io::AsyncReadExt;
 
-        let secret_var = "WAYLAND_TEST_SECRET_VAR_WIN";
+        let secret_var = "APEXROUTER_CLI_TEST_SECRET_VAR_WIN";
         let secret_val = "should-not-leak-windows";
         // SAFETY: single-threaded test context.
         unsafe { std::env::set_var(secret_var, secret_val) };

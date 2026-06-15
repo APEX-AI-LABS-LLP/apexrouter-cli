@@ -33,8 +33,8 @@ pub enum CuaError {
     /// Linux Wayland: the active compositor does not permit cross-application
     /// background input. The tool refuses to register at bootstrap rather
     /// than silently fall back (audit F7 positive invariance).
-    #[error("wayland compositor restricted: {reason}")]
-    WaylandRestricted { reason: String },
+    #[error("apexrouter compositor restricted: {reason}")]
+    ApexRouterRestricted { reason: String },
 
     /// The current host does not have `Capabilities.computer_use = true`
     /// advertised. The plugin layer refuses to mint a tool in that case.

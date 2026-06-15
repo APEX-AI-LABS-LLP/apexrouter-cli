@@ -63,7 +63,7 @@ use crate::provider_keys::{
 use crate::tui::app::App;
 use crate::tui::engine_bridge::OnboardingProvider;
 use crate::tui::theme::Theme;
-use crate::tui::widgets::wayland_banner;
+use crate::tui::widgets::apexrouter_banner;
 
 use super::{Surface, SurfaceAction, SurfaceId};
 
@@ -820,7 +820,7 @@ impl OnboardingSurface {
             (self.env_keys.len() + 2) as u16 // header + keys + trailing gap
         };
 
-        // The card is wide enough (80 cols) to give the full WAYLAND
+        // The card is wide enough (80 cols) to give the full APEXROUTER
         // banner room — its widest art row is 72 columns.
         let card = centered(area, 80, 26 + env_rows);
 
@@ -841,7 +841,7 @@ impl OnboardingSurface {
             _gap2,
             foot,
         ] = Layout::vertical([
-            Constraint::Length(9),        // WAYLAND banner hero
+            Constraint::Length(9),        // APEXROUTER banner hero
             Constraint::Length(1),        // connection-status subtitle
             Constraint::Length(env_rows), // environment-key block
             Constraint::Length(1),        // gap
@@ -856,10 +856,10 @@ impl OnboardingSurface {
         .areas(inner);
 
         // ── Brand ─────────────────────────────────────────────────────
-        // The full WAYLAND banner is the onboarding hero. The banner
+        // The full APEXROUTER banner is the onboarding hero. The banner
         // widget paints the wordmark, the tagline, and the `/` hint; the
         // dynamic connection-status line sits just below it.
-        wayland_banner(frame, brand, theme);
+        apexrouter_banner(frame, brand, theme);
 
         let connected = self.providers.len();
         let subtitle = if connected == 0 {
@@ -1068,7 +1068,7 @@ impl OnboardingSurface {
         let lines = vec![
             Line::from(""),
             Line::from(Span::styled(
-                "Wayland",
+                "ApexRouter",
                 Style::default()
                     .fg(theme.orange)
                     .add_modifier(Modifier::BOLD),
@@ -1105,7 +1105,7 @@ impl OnboardingSurface {
         let lines = vec![
             Line::from(""),
             Line::from(Span::styled(
-                "Wayland",
+                "ApexRouter",
                 Style::default()
                     .fg(theme.orange)
                     .add_modifier(Modifier::BOLD),
@@ -1216,7 +1216,7 @@ impl OnboardingSurface {
         let mut lines = vec![
             Line::from(""),
             Line::from(Span::styled(
-                "Wayland",
+                "ApexRouter",
                 Style::default()
                     .fg(theme.orange)
                     .add_modifier(Modifier::BOLD),
@@ -1267,7 +1267,7 @@ impl OnboardingSurface {
 
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                "Wayland",
+                "ApexRouter",
                 Style::default()
                     .fg(theme.orange)
                     .add_modifier(Modifier::BOLD),
@@ -1357,7 +1357,7 @@ impl OnboardingSurface {
         let greeting = if matches!(self.completed_via, Some(Path::ApiKey)) && !name.is_empty() {
             format!("Welcome, {name}.")
         } else {
-            "Wayland".to_string()
+            "ApexRouter".to_string()
         };
 
         let mut lines = vec![
@@ -1745,12 +1745,12 @@ mod tests {
     fn connect_step_renders_brand_and_three_paths() {
         let mut surface = fresh();
         let text = render_text(&mut surface, 90, 32);
-        // The Connect intro is the full WAYLAND banner — its tagline is a
+        // The Connect intro is the full APEXROUTER banner — its tagline is a
         // reliable fingerprint regardless of whether the wide ASCII art
         // or the degraded wordmark renders for the test geometry.
         assert!(
             text.contains("the autonomous AI agent"),
-            "WAYLAND banner missing"
+            "APEXROUTER banner missing"
         );
         assert!(text.contains("Connect a provider"), "card title missing");
         assert!(text.contains("Enter an API key"), "api-key path missing");
@@ -2345,7 +2345,7 @@ mod tests {
         surface.completed_via = Some(Path::ApiKey);
         surface.step = Step::Ready;
         surface.existing_config = Some((
-            std::path::PathBuf::from("/Users/someone/.config/wayland-core/config.toml"),
+            std::path::PathBuf::from("/Users/someone/.config/apexrouter-cli/config.toml"),
             ReadyChoice::Keep,
         ));
         let text = render_text(&mut surface, 90, 30);
@@ -2371,7 +2371,7 @@ mod tests {
         surface.completed_via = Some(Path::ApiKey);
         surface.step = Step::Ready;
         surface.existing_config = Some((
-            std::path::PathBuf::from("/tmp/wayland-core/config.toml"),
+            std::path::PathBuf::from("/tmp/apexrouter-cli/config.toml"),
             ReadyChoice::Keep,
         ));
         let action = surface.handle_key(key(KeyCode::Enter), &mut app);
@@ -2391,7 +2391,7 @@ mod tests {
         surface.completed_via = Some(Path::ApiKey);
         surface.step = Step::Ready;
         surface.existing_config = Some((
-            std::path::PathBuf::from("/tmp/wayland-core/config.toml"),
+            std::path::PathBuf::from("/tmp/apexrouter-cli/config.toml"),
             ReadyChoice::Keep,
         ));
         surface.handle_key(key(KeyCode::Up), &mut app);
@@ -2406,12 +2406,12 @@ mod tests {
         let prev = std::env::var_os("HOME");
         unsafe { std::env::set_var("HOME", "/Users/sean") };
         let shortened = short_path(std::path::Path::new(
-            "/Users/sean/.config/wayland-core/config.toml",
+            "/Users/sean/.config/apexrouter-cli/config.toml",
         ));
-        assert_eq!(shortened, "~/.config/wayland-core/config.toml");
+        assert_eq!(shortened, "~/.config/apexrouter-cli/config.toml");
         // A path outside HOME is returned unchanged.
-        let outside = short_path(std::path::Path::new("/etc/wayland-core/config.toml"));
-        assert_eq!(outside, "/etc/wayland-core/config.toml");
+        let outside = short_path(std::path::Path::new("/etc/apexrouter-cli/config.toml"));
+        assert_eq!(outside, "/etc/apexrouter-cli/config.toml");
         match prev {
             Some(v) => unsafe { std::env::set_var("HOME", v) },
             None => unsafe { std::env::remove_var("HOME") },

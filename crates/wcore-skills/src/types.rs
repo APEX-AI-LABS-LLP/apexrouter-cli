@@ -94,17 +94,17 @@ pub enum ExecutionContext {
 /// Where the skill file originates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillSource {
-    /// `<config_dir>/wayland-core/skills/`
+    /// `<config_dir>/apexrouter-cli/skills/`
     User,
-    /// .wayland-core/skills/ (project-level)
+    /// .apexrouter-cli/skills/ (project-level)
     Project,
-    /// .wayland-core/.managed/skills/
+    /// .apexrouter-cli/.managed/skills/
     Managed,
     /// Built-in bundled skills
     Bundled,
     /// Loaded via MCP protocol
     Mcp,
-    /// .wayland-core/commands/ (legacy compatibility)
+    /// .apexrouter-cli/commands/ (legacy compatibility)
     Legacy,
 }
 

@@ -1,7 +1,7 @@
 //! End-to-end skill tests using real files on disk.
 //!
 //! Each test creates skill files in a temporary directory that mirrors the
-//! `.wayland-core/skills/` and `.wayland-core/commands/` layout, then exercises the full
+//! `.apexrouter-cli/skills/` and `.apexrouter-cli/commands/` layout, then exercises the full
 //! pipeline: discovery -> loading -> system prompt injection -> SkillTool execution.
 //!
 //! Tests use `load_all_skills` with `add_dirs` or a temp cwd to avoid depending
@@ -11,12 +11,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use wayland-core::context::{SystemPromptCache, build_system_prompt};
-use wayland-core::skills::loader::load_all_skills;
-use wayland-core::skills::permissions::SkillPermissionChecker;
-use wayland-core::skills::types::SkillMetadata;
-use wayland-core::tools::skill::SkillTool;
-use wayland-core::tools::Tool;
+use apexrouter-cli::context::{SystemPromptCache, build_system_prompt};
+use apexrouter-cli::skills::loader::load_all_skills;
+use apexrouter-cli::skills::permissions::SkillPermissionChecker;
+use apexrouter-cli::skills::types::SkillMetadata;
+use apexrouter-cli::tools::skill::SkillTool;
+use apexrouter-cli::tools::Tool;
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -28,7 +28,7 @@ fn find_skill<'a>(skills: &'a [SkillMetadata], name: &str) -> Option<&'a SkillMe
     skills.iter().find(|s| s.name == name)
 }
 
-/// Create a project-like temp directory with `.git` marker and `.wayland-core/skills/` + `.wayland-core/commands/`.
+/// Create a project-like temp directory with `.git` marker and `.apexrouter-cli/skills/` + `.apexrouter-cli/commands/`.
 /// Returns (TempDir guard, root path).
 fn make_project() -> (TempDir, PathBuf) {
     let tmp = TempDir::new().unwrap();
@@ -38,11 +38,11 @@ fn make_project() -> (TempDir, PathBuf) {
     fs::create_dir(root.join(".git")).unwrap();
 
     // Skills directory
-    let skills_dir = root.join(".wayland-core").join("skills");
+    let skills_dir = root.join(".apexrouter-cli").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
     // Commands directory (legacy)
-    let commands_dir = root.join(".wayland-core").join("commands");
+    let commands_dir = root.join(".apexrouter-cli").join("commands");
     fs::create_dir_all(&commands_dir).unwrap();
 
     // --- greet skill ---
@@ -58,7 +58,7 @@ fn make_project() -> (TempDir, PathBuf) {
     fs::create_dir_all(&migrate_dir).unwrap();
     fs::write(
         migrate_dir.join("SKILL.md"),
-        "---\nname: db:migrate\ndescription: Run database migrations\n---\n\nRunning migrations for: $ARGUMENTS\nSkill directory: ${AIONRS_SKILL_DIR}\n",
+        "---\nname: db:migrate\ndescription: Run database migrations\n---\n\nRunning migrations for: $ARGUMENTS\nSkill directory: ${WCORE_SKILL_DIR}\n",
     ).unwrap();
 
     // --- rust-review (conditional paths) ---
@@ -80,7 +80,7 @@ fn make_project() -> (TempDir, PathBuf) {
     // --- legacy command (flat .md in commands/) ---
     fs::write(
         commands_dir.join("legacy-cmd.md"),
-        "---\nname: legacy-cmd\ndescription: A legacy command for backward compatibility testing\n---\n\nThis is a legacy command loaded from .wayland-core/commands/\nArguments: $ARGUMENTS\n",
+        "---\nname: legacy-cmd\ndescription: A legacy command for backward compatibility testing\n---\n\nThis is a legacy command loaded from .apexrouter-cli/commands/\nArguments: $ARGUMENTS\n",
     ).unwrap();
 
     (tmp, root)
@@ -120,7 +120,7 @@ async fn e2_legacy_commands_discovered() {
 
     let legacy = find_skill(&skills, "legacy-cmd");
     assert!(legacy.is_some(), "E2 FAIL: 'legacy-cmd' not discovered");
-    println!("E2 PASS: legacy command 'legacy-cmd' discovered from .wayland-core/commands/");
+    println!("E2 PASS: legacy command 'legacy-cmd' discovered from .apexrouter-cli/commands/");
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ async fn e7_system_prompt_injection() {
 }
 
 // ---------------------------------------------------------------------------
-// E8: Full SkillTool execution (db:migrate with $ARGUMENTS + ${AIONRS_SKILL_DIR})
+// E8: Full SkillTool execution (db:migrate with $ARGUMENTS + ${WCORE_SKILL_DIR})
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -236,11 +236,11 @@ async fn e8_full_execution() {
         result.content
     );
     assert!(
-        !result.content.contains("${AIONRS_SKILL_DIR}"),
-        "E8 FAIL: ${{AIONRS_SKILL_DIR}} not expanded. Got: {}",
+        !result.content.contains("${WCORE_SKILL_DIR}"),
+        "E8 FAIL: ${{WCORE_SKILL_DIR}} not expanded. Got: {}",
         result.content
     );
-    println!("E8 PASS: full execution with $ARGUMENTS and ${{AIONRS_SKILL_DIR}} substitution");
+    println!("E8 PASS: full execution with $ARGUMENTS and ${{WCORE_SKILL_DIR}} substitution");
 }
 
 // ---------------------------------------------------------------------------

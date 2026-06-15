@@ -179,7 +179,7 @@ impl McpManager {
                 tools: Some(json!({})),
             },
             client_info: ClientInfo {
-                name: "wayland-core".to_string(),
+                name: "apexrouter-cli".to_string(),
                 version: "0.3.0".to_string(),
             },
         };

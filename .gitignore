@@ -11,12 +11,11 @@
 !.env.example
 do.env
 *.do.env
-do_wayland_e2e
-do_wayland_e2e.pub
-deploy_wayland_core
-deploy_wayland_core.pub
-# Catch-all for credential bundles that might land in-repo by accident
-**/wayland-e2e/do.env
+do_apexrouter_e2e
+do_apexrouter_e2e.pub
+deploy_apexrouter_cli
+deploy_apexrouter_cli.pub
+**/apexrouter-e2e/do.env
 
 # IDE
 .vscode/
@@ -36,8 +35,8 @@ deploy_wayland_core.pub
 worktree/
 worktrees/
 
-# wayland-core session data
-.wayland-core/
+# apexrouter-cli session data
+.apexrouter/
 
 # Debug artifacts
 *.pdb

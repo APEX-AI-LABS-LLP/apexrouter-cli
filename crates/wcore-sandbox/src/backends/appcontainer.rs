@@ -729,7 +729,7 @@ mod windows_impl {
                     target: "wcore_sandbox",
                     exit_code = out.exit_code,
                     "AppContainer real-spawn probe completed but exit code non-zero; \
-                     sandbox disabled. WAYLAND_SANDBOX_LIVE_WINDOWS spawn may also fail."
+                     sandbox disabled. APEXROUTER_CLI_SANDBOX_LIVE_WINDOWS spawn may also fail."
                 );
                 false
             }
@@ -768,8 +768,8 @@ mod windows_impl {
         unsafe {
             // ---- 1. AppContainer SID ----
             let name = profile_name_w();
-            let display = widen("Wayland-Core Sandbox");
-            let desc = widen("Sandboxed tool execution for Wayland-Core");
+            let display = widen("ApexRouter-CLI Sandbox");
+            let desc = widen("Sandboxed tool execution for ApexRouter-CLI");
             let mut sid_ptr: *mut core::ffi::c_void = ptr::null_mut();
             let create_hr = CreateAppContainerProfile(
                 name.as_ptr(),
@@ -1928,7 +1928,7 @@ mod windows_impl {
         /// env var so the matrix exercises this path.
         #[tokio::test]
         async fn echo_runs_live() {
-            if std::env::var("WAYLAND_SANDBOX_LIVE_WINDOWS").is_err() {
+            if std::env::var("APEXROUTER_CLI_SANDBOX_LIVE_WINDOWS").is_err() {
                 return;
             }
             let b = AppContainerBackend::new();

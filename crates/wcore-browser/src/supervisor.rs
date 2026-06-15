@@ -52,10 +52,10 @@ impl Default for SupervisorConfig {
 
 fn home_pid_dir() -> PathBuf {
     if let Some(home) = dirs_home() {
-        home.join(".wayland-core").join("browser").join("pids")
+        home.join(".apexrouter-cli").join("browser").join("pids")
     } else {
         std::env::temp_dir()
-            .join("wayland-core")
+            .join("apexrouter-cli")
             .join("browser")
             .join("pids")
     }
@@ -408,7 +408,7 @@ mod tests {
         let p = sup.pid_dir();
         let s = p.to_string_lossy();
         assert!(
-            s.contains("wayland-core") && s.contains("browser") && s.contains("pids"),
+            s.contains("apexrouter-cli") && s.contains("browser") && s.contains("pids"),
             "unexpected pid dir: {s}"
         );
     }

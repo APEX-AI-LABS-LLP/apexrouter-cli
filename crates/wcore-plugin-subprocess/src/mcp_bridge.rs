@@ -8,9 +8,9 @@
 //! ## Why this exists
 //!
 //! v0.6.5 v0 — "instant-catalog of the MCP ecosystem". When operators drop
-//! an MCP-bridge plugin manifest in `~/.local/share/wayland/plugins/`, the
+//! an MCP-bridge plugin manifest in `~/.local/share/apexrouter/plugins/`, the
 //! engine spawns the configured MCP server, lists its tools, and registers
-//! them as first-class Wayland plugin tools — no per-server adapter code
+//! them as first-class ApexRouter plugin tools — no per-server adapter code
 //! required.
 //!
 //! ## Wire protocol
@@ -109,7 +109,7 @@ const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
 /// Minimal env vars forwarded to MCP-bridge child processes after
 /// [`std::process::Command::env_clear`]. Everything else — including
-/// `OPENAI_API_KEY`, `WAYLAND_*`, `ANTHROPIC_*`, etc. — is withheld.
+/// `OPENAI_API_KEY`, `APEXROUTER_CLI_*`, `ANTHROPIC_*`, etc. — is withheld.
 /// Kept minimal: just enough for CLI tools to locate executables and
 /// behave correctly under different locales on every supported OS.
 ///
@@ -428,7 +428,7 @@ impl McpBridgePluginRunner {
                 tools: Some(json!({})),
             },
             client_info: ClientInfo {
-                name: "wayland-mcp-bridge".to_string(),
+                name: "apexrouter-mcp-bridge".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
         };
@@ -710,7 +710,7 @@ mod tests {
         use tokio::io::AsyncReadExt;
         use tokio::process::Command;
 
-        let secret_var = "WAYLAND_MCP_TEST_SECRET";
+        let secret_var = "APEXROUTER_CLI_MCP_TEST_SECRET";
         let secret_val = "mcp-should-not-leak";
         // SAFETY: single-threaded test context; no concurrent env mutation.
         unsafe { std::env::set_var(secret_var, secret_val) };

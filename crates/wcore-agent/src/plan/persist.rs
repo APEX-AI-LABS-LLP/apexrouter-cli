@@ -1,6 +1,6 @@
 //! F16 plan persistence.
 //!
-//! Plans persist to `dirs::config_dir()/wayland-core/plans/<session-id>.json`
+//! Plans persist to `dirs::config_dir()/apexrouter-cli/plans/<session-id>.json`
 //! on `ExitPlanMode`. Resume on next session is advertised via a
 //! `ProtocolEvent::Info` banner — actual resume injects the persisted text
 //! into the session's initial context. No new protocol variant needed.
@@ -23,9 +23,9 @@ pub struct PersistedPlan {
 fn plans_dir(root: Option<&Path>) -> io::Result<PathBuf> {
     let base = match root {
         Some(p) => p.to_path_buf(),
-        // F-059: honour WAYLAND_HOME so plan files land in the sandbox,
-        // not in the host's ~/Library/Application Support/wayland-core/.
-        None => wcore_config::config::wayland_config_dir(),
+        // F-059: honour APEXROUTER_CLI_HOME so plan files land in the sandbox,
+        // not in the host's ~/Library/Application Support/apexrouter-cli/.
+        None => wcore_config::config::apexrouter_config_dir(),
     };
     let dir = base.join("plans");
     std::fs::create_dir_all(&dir)?;
@@ -47,7 +47,7 @@ pub fn save_plan_json(
         session_id: session_id.to_string(),
         ts_unix,
         plan_text: plan_text.to_string(),
-        source_product: "wayland-core".to_string(),
+        source_product: "apexrouter-cli".to_string(),
     };
     let json = serde_json::to_string_pretty(&p)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;

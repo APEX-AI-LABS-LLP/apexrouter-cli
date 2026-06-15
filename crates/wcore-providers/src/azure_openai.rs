@@ -364,7 +364,7 @@ pub fn register_azure_openai_in<R: ProviderRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::WaylandProviderRegistry;
+    use crate::registry::ApexRouterProviderRegistry;
     use wcore_types::llm::LlmRequest;
 
     fn req(model: &str) -> LlmRequest {
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn register_uses_lowercase_id() {
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
         register_azure_openai_in(
             &mut r,
             "az-key".into(),
@@ -573,7 +573,7 @@ mod tests {
         // Azure routes by deployment name — a missing resource or deployment
         // can never produce a working endpoint, so registration must fail
         // loudly rather than yielding a connect-to-nothing provider.
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
 
         let no_resource = register_azure_openai_in(
             &mut r,
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn register_rejects_duplicate() {
-        let mut r = WaylandProviderRegistry::new();
+        let mut r = ApexRouterProviderRegistry::new();
         register_azure_openai_in(
             &mut r,
             "az-key".into(),

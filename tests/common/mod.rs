@@ -7,16 +7,16 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use wayland-core::confirm::ToolConfirmer;
-use wayland-core::protocol::events::ToolCategory;
-use wayland-core::config::{Config, ProviderType, ToolsConfig, SessionConfig};
-use wayland-core::hooks::HooksConfig;
-use wayland-core::mcp::config::McpConfig;
-use wayland-core::provider::{LlmProvider, ProviderError};
-use wayland-core::tools::Tool;
-use wayland-core::types::llm::{LlmEvent, LlmRequest};
-use wayland-core::types::message::{StopReason, TokenUsage};
-use wayland-core::types::tool::ToolResult;
+use apexrouter-cli::confirm::ToolConfirmer;
+use apexrouter-cli::protocol::events::ToolCategory;
+use apexrouter-cli::config::{Config, ProviderType, ToolsConfig, SessionConfig};
+use apexrouter-cli::hooks::HooksConfig;
+use apexrouter-cli::mcp::config::McpConfig;
+use apexrouter-cli::provider::{LlmProvider, ProviderError};
+use apexrouter-cli::tools::Tool;
+use apexrouter-cli::types::llm::{LlmEvent, LlmRequest};
+use apexrouter-cli::types::message::{StopReason, TokenUsage};
+use apexrouter-cli::types::tool::ToolResult;
 
 // ---------------------------------------------------------------------------
 // MockLlmProvider — deterministic LLM for engine / spawn tests
@@ -247,19 +247,19 @@ pub fn test_config() -> Config {
         system_prompt: Some("You are a test assistant.".to_string()),
         thinking: None,
         prompt_caching: false,
-        compat: wayland-core::provider::compat::ProviderCompat::anthropic_defaults(),
+        compat: apexrouter-cli::provider::compat::ProviderCompat::anthropic_defaults(),
         tools: ToolsConfig {
             auto_approve: true,
             allow_list: vec![],
-            skills: wayland-core::config::SkillsPermissionConfig::default(),
+            skills: apexrouter-cli::config::SkillsPermissionConfig::default(),
         },
         session: SessionConfig {
             enabled: false,
-            directory: "/tmp/wayland-core-test-sessions".to_string(),
+            directory: "/tmp/apexrouter-cli-test-sessions".to_string(),
             max_sessions: 5,
         },
-        compact: wayland-core::config::CompactConfig::default(),
-        plan: wayland-core::config::PlanConfig::default(),
+        compact: apexrouter-cli::config::CompactConfig::default(),
+        plan: apexrouter-cli::config::PlanConfig::default(),
         hooks: HooksConfig::default(),
         bedrock: None,
         vertex: None,

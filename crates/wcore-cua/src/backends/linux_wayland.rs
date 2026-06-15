@@ -76,7 +76,7 @@ impl LinuxWaylandBackend {
 #[async_trait]
 impl ComputerUseBackend for LinuxWaylandBackend {
     fn name(&self) -> &'static str {
-        "linux-wayland"
+        "linux-apexrouter"
     }
 
     fn platform(&self) -> Platform {
@@ -87,10 +87,10 @@ impl ComputerUseBackend for LinuxWaylandBackend {
         // Defence-in-depth: even after bootstrap-time positive invariance,
         // a compositor can become restricted mid-session (toolkit reload,
         // sandboxing change). Re-check before every input op and emit a
-        // typed `WaylandRestricted` error so the tool surface stays
+        // typed `ApexRouterRestricted` error so the tool surface stays
         // honest.
         if op_is_input(&op) && !compositor_allows_background_input() {
-            return Err(CuaError::WaylandRestricted {
+            return Err(CuaError::ApexRouterRestricted {
                 reason: "compositor refused input injection mid-session".into(),
             });
         }
@@ -155,7 +155,7 @@ fn op_is_input(op: &CuaOp) -> bool {
     )
 }
 
-/// REV-2 audit F7 probe. Returns `true` only when the active Wayland
+/// REV-2 audit F7 probe. Returns `true` only when the active ApexRouter
 /// compositor permits cross-application background input.
 ///
 /// Test fixtures (env vars) take precedence so CI runs deterministically
@@ -399,10 +399,10 @@ mod linux_tests {
     }
 
     /// Audit F7: positive invariance preserved — restricted compositor
-    /// returns `WaylandRestricted` for input ops.
+    /// returns `ApexRouterRestricted` for input ops.
     #[tokio::test]
     #[serial]
-    async fn restricted_compositor_dispatch_returns_wayland_restricted() {
+    async fn restricted_compositor_dispatch_returns_apexrouter_restricted() {
         clear_env();
         unsafe { std::env::set_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED", "1") };
         let b = LinuxWaylandBackend::new();
@@ -417,7 +417,7 @@ mod linux_tests {
                 },
             )
             .await;
-        assert!(matches!(r, Err(CuaError::WaylandRestricted { .. })));
+        assert!(matches!(r, Err(CuaError::ApexRouterRestricted { .. })));
         clear_env();
     }
 

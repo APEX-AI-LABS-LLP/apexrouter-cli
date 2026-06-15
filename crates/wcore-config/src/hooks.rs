@@ -179,7 +179,7 @@ mod trust_helper_tests {
     fn sanitize_ident_strips_attribute_injection() {
         assert_eq!(sanitize_ident("x\" trust=\"trusted"), "x__trust__trusted");
         assert_eq!(sanitize_ident("h>"), "h_");
-        assert_eq!(sanitize_ident("wayland-ijfw"), "wayland-ijfw");
+        assert_eq!(sanitize_ident("apexrouter-ijfw"), "apexrouter-ijfw");
         assert_eq!(sanitize_ident("ijfw_memory_prelude"), "ijfw_memory_prelude");
     }
 }

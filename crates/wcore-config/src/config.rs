@@ -412,7 +412,7 @@ pub struct ObservabilityConfig {
     /// W1: emit `trace_event` over the JSON stream protocol and advertise
     /// `capabilities.structured_traces = true` on the Ready event. Hosts
     /// that haven't learned about the new variant must remain off; flip
-    /// this only when the host (e.g. Wayland Desktop) is ready to consume.
+    /// this only when the host (e.g. ApexRouter Desktop) is ready to consume.
     #[serde(default)]
     pub structured_traces: bool,
     /// W9: enable autonomous skill creation (F10), curator (F11), and
@@ -435,7 +435,7 @@ pub struct ObservabilityConfig {
     /// config: `[observability] online_evolution = true`). When true the
     /// engine emits one `ProtocolEvent::EvolutionEvent` per session at
     /// session-end when the session had at least one successful tool call,
-    /// and persists a Paraphrase variant to `$WAYLAND_HOME/evolved/`.
+    /// and persists a Paraphrase variant to `$APEXROUTER_CLI_HOME/evolved/`.
     #[serde(default)]
     pub online_evolution: bool,
     /// Dynamic Workflows B3 — opt-in `WorkflowCandidate` detection signal.
@@ -717,8 +717,8 @@ fn default_allow_list() -> Vec<String> {
         "transcribe_audio".into(),
         "ToolSearch".into(),
         "Skill".into(),
-        "wayland_status".into(),
-        "wayland_telemetry_query".into(),
+        "apexrouter_status".into(),
+        "apexrouter_telemetry_query".into(),
     ]
 }
 fn default_true() -> bool {
@@ -726,10 +726,10 @@ fn default_true() -> bool {
 }
 fn default_session_dir() -> String {
     // F-035 + F-010: per-user, consistent regardless of cwd.
-    // Resolution flows through wayland_config_dir() so WAYLAND_HOME is
+    // Resolution flows through apexrouter_config_dir() so APEXROUTER_CLI_HOME is
     // honoured.  W3-H's TODO(F-010) resolved: the canonical helper is now
-    // wayland_config_dir() in this file.
-    wayland_config_dir()
+    // apexrouter_config_dir() in this file.
+    apexrouter_config_dir()
         .join("sessions")
         .to_string_lossy()
         .into_owned()
@@ -893,7 +893,7 @@ pub enum ProviderType {
     /// deployment name. v0.6.4 Task 3.1 added the [`AzureAuthMode`] enum
     /// and the runtime `AzureAuth { ApiKey, AadBearer }` in `wcore-providers`,
     /// but the config→provider wiring (so a `[azure-openai]` section in
-    /// `wayland.toml` can flip to AAD bearer) lands in follow-up Task 3.1b
+    /// `apexrouter.toml` can flip to AAD bearer) lands in follow-up Task 3.1b
     /// along with the token-source injection seam.
     AzureOpenAI,
     /// Together AI — OpenAI-compatible inference API.
@@ -1088,7 +1088,7 @@ impl Config {
         let project_path = cli
             .project_dir
             .as_ref()
-            .map(|d| d.join(".wayland-core.toml"))
+            .map(|d| d.join(".apexrouter-cli.toml"))
             .unwrap_or_else(project_config_path);
         let project = try_load_config_file(&project_path)?;
 
@@ -1351,7 +1351,7 @@ impl Config {
     /// Wave SD — open the configured credentials store. The plaintext
     /// backend lands beside the main config file (so the existing
     /// `secure_config_file` step covers it); the keyring backend
-    /// uses the configured service name (default `"wayland-core"`).
+    /// uses the configured service name (default `"apexrouter-cli"`).
     ///
     /// Returns Err on transient backend errors (e.g. keyring locked).
     pub fn open_credentials_store(
@@ -1366,7 +1366,7 @@ impl Config {
 /// to `config.toml` so the same parent dir / perms hardening applies.
 pub fn credentials_storage_path() -> PathBuf {
     app_config_dir()
-        .unwrap_or_else(|| PathBuf::from("wayland-core"))
+        .unwrap_or_else(|| PathBuf::from("apexrouter-cli"))
         .join("credentials.toml")
 }
 
@@ -1707,62 +1707,62 @@ fn lookup_store_api_key(
 
 // --- App directories ---
 
-/// Canonical config-dir resolver that honours `WAYLAND_HOME`.
+/// Canonical config-dir resolver that honours `APEXROUTER_CLI_HOME`.
 ///
 /// Resolution order (F-010):
-///   1. `$WAYLAND_HOME`                     (explicit sandbox / hermetic env)
-///   2. `$XDG_DATA_HOME/wayland-core`       (XDG-compliant, Linux-preferred)
-///   3. `dirs::config_dir()/wayland-core`   (platform native — macOS/Windows)
+///   1. `$APEXROUTER_CLI_HOME`                     (explicit sandbox / hermetic env)
+///   2. `$XDG_DATA_HOME/apexrouter-cli`       (XDG-compliant, Linux-preferred)
+///   3. `dirs::config_dir()/apexrouter-cli`   (platform native — macOS/Windows)
 ///
 /// All config, auth, session, and sentinel paths **must** go through this
-/// helper so that setting `WAYLAND_HOME` hermetically sandboxes every
+/// helper so that setting `APEXROUTER_CLI_HOME` hermetically sandboxes every
 /// file the engine touches.  This was the root cause of the F-019 key
 /// leak: auditor sub-processes inherited the host environment and picked
-/// up the real `~/Library/Application Support/wayland-core/auth.json`.
-pub fn wayland_config_dir() -> PathBuf {
-    if let Ok(wh) = std::env::var("WAYLAND_HOME") {
+/// up the real `~/Library/Application Support/apexrouter-cli/auth.json`.
+pub fn apexrouter_config_dir() -> PathBuf {
+    if let Ok(wh) = std::env::var("APEXROUTER_CLI_HOME") {
         return PathBuf::from(wh);
     }
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        return PathBuf::from(xdg).join("wayland-core");
+        return PathBuf::from(xdg).join("apexrouter-cli");
     }
     dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("wayland-core"))
-        .join("wayland-core")
+        .unwrap_or_else(|| PathBuf::from("apexrouter-cli"))
+        .join("apexrouter-cli")
 }
 
 /// Platform-aware app config root.
 ///
-/// - Linux:   `~/.config/wayland-core`  (or `$WAYLAND_HOME` / `$XDG_DATA_HOME`)
-/// - macOS:   `~/Library/Application Support/wayland-core` (or override)
-/// - Windows: `%APPDATA%\wayland-core`  (or override)
+/// - Linux:   `~/.config/apexrouter-cli`  (or `$APEXROUTER_CLI_HOME` / `$XDG_DATA_HOME`)
+/// - macOS:   `~/Library/Application Support/apexrouter-cli` (or override)
+/// - Windows: `%APPDATA%\apexrouter-cli`  (or override)
 ///
-/// Delegates to [`wayland_config_dir`] so `WAYLAND_HOME` is always honoured.
+/// Delegates to [`apexrouter_config_dir`] so `APEXROUTER_CLI_HOME` is always honoured.
 pub fn app_config_dir() -> Option<PathBuf> {
-    Some(wayland_config_dir())
+    Some(apexrouter_config_dir())
 }
 
-/// Canonical `~/.wayland` profile home.
+/// Canonical `~/.apexrouter` profile home.
 ///
 /// This is the stable dot-directory that plugins and their helper processes
 /// (e.g. the IJFW MCP memory server) agree on for profile-scoped state. It is
-/// distinct from [`wayland_config_dir`], which resolves the platform-native
-/// config dir (`~/Library/Application Support/wayland-core` on macOS,
-/// `%APPDATA%\wayland-core` on Windows). Plugin installers write under
-/// `~/.wayland`, so the host must expose the same root to launched servers.
+/// distinct from [`apexrouter_config_dir`], which resolves the platform-native
+/// config dir (`~/Library/Application Support/apexrouter-cli` on macOS,
+/// `%APPDATA%\apexrouter-cli` on Windows). Plugin installers write under
+/// `~/.apexrouter`, so the host must expose the same root to launched servers.
 ///
 /// Resolution order:
-///   1. `$WAYLAND_HOME`            (explicit sandbox / hermetic override)
-///   2. `dirs::home_dir()/.wayland` (default, cross-platform)
+///   1. `$APEXROUTER_CLI_HOME`            (explicit sandbox / hermetic override)
+///   2. `dirs::home_dir()/.apexrouter` (default, cross-platform)
 ///
 /// Never hardcodes a leading `/` — `dirs::home_dir()` keeps it correct on
-/// Windows. Falls back to a relative `.wayland` only if the home dir cannot
+/// Windows. Falls back to a relative `.apexrouter` only if the home dir cannot
 /// be resolved at all (headless CI without `$HOME`).
 ///
 /// This lives in `wcore-config` (the lowest crate the others can depend on) to
-/// be the canonical resolver. NOTE: the same `$WAYLAND_HOME`-or-`~/.wayland`
+/// be the canonical resolver. NOTE: the same `$APEXROUTER_CLI_HOME`-or-`~/.apexrouter`
 /// pattern is currently re-implemented in several call sites (e.g.
-/// `wcore_tools::tirith_security::wayland_home`, `wcore-cron`, `wcore-pricing`,
+/// `wcore_tools::tirith_security::apexrouter_home`, `wcore-cron`, `wcore-pricing`,
 /// `wcore-cli`, `wcore-agent::bootstrap`). Migrating those onto this function is
 /// a follow-up consolidation, deliberately out of scope here to keep the change
 /// surgical and avoid colliding with concurrent work on those crates.
@@ -1771,7 +1771,7 @@ pub fn profile_home() -> PathBuf {
     // newline). Such a value can't be passed safely to a child env and almost
     // always indicates a corrupt/hostile environment; fall through to the
     // default rather than propagating it.
-    if let Ok(wh) = std::env::var("WAYLAND_HOME")
+    if let Ok(wh) = std::env::var("APEXROUTER_CLI_HOME")
         && !wh.chars().any(|c| c.is_control())
     {
         return PathBuf::from(wh);
@@ -1779,11 +1779,11 @@ pub fn profile_home() -> PathBuf {
     // F12: make the last-resort fallback absolute where possible to avoid
     // CWD-confusion if the home dir can't be resolved.
     dirs::home_dir()
-        .map(|h| h.join(".wayland"))
+        .map(|h| h.join(".apexrouter"))
         .unwrap_or_else(|| {
             std::env::current_dir()
-                .map(|d| d.join(".wayland"))
-                .unwrap_or_else(|_| PathBuf::from(".wayland"))
+                .map(|d| d.join(".apexrouter"))
+                .unwrap_or_else(|_| PathBuf::from(".apexrouter"))
         })
 }
 
@@ -1791,24 +1791,24 @@ pub fn profile_home() -> PathBuf {
 
 pub fn global_config_path() -> PathBuf {
     app_config_dir()
-        .unwrap_or_else(|| PathBuf::from("wayland-core"))
+        .unwrap_or_else(|| PathBuf::from("apexrouter-cli"))
         .join("config.toml")
 }
 
 /// Resolve the project-local config path, accepting both layout forms.
 ///
-/// F-011: the eval-harness scaffold writes `.wayland-core/config.toml`
-/// (dir form) while the documented layout is `.wayland-core.toml` (file
+/// F-011: the eval-harness scaffold writes `.apexrouter-cli/config.toml`
+/// (dir form) while the documented layout is `.apexrouter-cli.toml` (file
 /// form).  We try the file form first; if absent, fall back to the dir
 /// form.  If BOTH are present we warn and use the file form.
 fn project_config_path() -> PathBuf {
-    let file_form = PathBuf::from(".wayland-core.toml");
-    let dir_form = PathBuf::from(".wayland-core").join("config.toml");
+    let file_form = PathBuf::from(".apexrouter-cli.toml");
+    let dir_form = PathBuf::from(".apexrouter-cli").join("config.toml");
     match (file_form.exists(), dir_form.exists()) {
         (true, true) => {
             eprintln!(
-                "Warning: both .wayland-core.toml and .wayland-core/config.toml exist; \
-                 using .wayland-core.toml (file form). Remove one to silence this warning."
+                "Warning: both .apexrouter-cli.toml and .apexrouter-cli/config.toml exist; \
+                 using .apexrouter-cli.toml (file form). Remove one to silence this warning."
             );
             file_form
         }
@@ -1948,7 +1948,7 @@ pub fn patch_global_config(mutate: impl FnOnce(&mut ConfigFile)) -> anyhow::Resu
 
 /// The path-injectable core of [`patch_global_config`]. Split out so tests can
 /// exercise the load → mutate → serialise → atomic-write round-trip against a
-/// temp file with no `WAYLAND_HOME`/global-state race.
+/// temp file with no `APEXROUTER_CLI_HOME`/global-state race.
 fn patch_config_file_at(path: &Path, mutate: impl FnOnce(&mut ConfigFile)) -> anyhow::Result<()> {
     use anyhow::Context;
 
@@ -1975,27 +1975,27 @@ fn patch_config_file_at(path: &Path, mutate: impl FnOnce(&mut ConfigFile)) -> an
     Ok(())
 }
 
-/// Resolve the legacy `config.yaml` lookup path, honouring `WAYLAND_HOME`.
+/// Resolve the legacy `config.yaml` lookup path, honouring `APEXROUTER_CLI_HOME`.
 ///
 /// #275 / F-010: previously this resolved against `dirs::home_dir()` only,
 /// which meant every test process / sandboxed run / second-user account read
-/// the real user's `~/.wayland/config.yaml` even with `WAYLAND_HOME` set —
+/// the real user's `~/.apexrouter/config.yaml` even with `APEXROUTER_CLI_HOME` set —
 /// the same hermeticity class as F-019.
 ///
 /// Resolution order:
-///   1. `$WAYLAND_HOME/config.yaml` when `WAYLAND_HOME` is set (sandbox /
+///   1. `$APEXROUTER_CLI_HOME/config.yaml` when `APEXROUTER_CLI_HOME` is set (sandbox /
 ///      hermetic env). The override owns BOTH the yaml read path and the
 ///      canonical TOML write path.
-///   2. `$HOME/.wayland/config.yaml` otherwise — the Desktop-app default.
+///   2. `$HOME/.apexrouter/config.yaml` otherwise — the Desktop-app default.
 fn legacy_yaml_path() -> Option<PathBuf> {
-    if std::env::var_os("WAYLAND_HOME").is_some() {
-        return Some(wayland_config_dir().join("config.yaml"));
+    if std::env::var_os("APEXROUTER_CLI_HOME").is_some() {
+        return Some(apexrouter_config_dir().join("config.yaml"));
     }
-    dirs::home_dir().map(|h| h.join(".wayland").join("config.yaml"))
+    dirs::home_dir().map(|h| h.join(".apexrouter").join("config.yaml"))
 }
 
 /// One-shot migration from the legacy `config.yaml` (written by the Desktop
-/// app, IJFW-style YAML) into the canonical `wayland_config_dir()/config.toml`
+/// app, IJFW-style YAML) into the canonical `apexrouter_config_dir()/config.toml`
 /// that the engine reads.
 ///
 /// Runs at bootstrap before `load_config_file` so any fields the engine
@@ -2004,7 +2004,7 @@ fn legacy_yaml_path() -> Option<PathBuf> {
 /// already exists. Never deletes the yaml.
 ///
 /// Both the read path (legacy yaml) and the write path (canonical TOML)
-/// route through `wayland_config_dir()` so `WAYLAND_HOME` hermetically
+/// route through `apexrouter_config_dir()` so `APEXROUTER_CLI_HOME` hermetically
 /// sandboxes the entire migration (F-010 / #275).
 pub fn migrate_legacy_yaml_if_needed() {
     let legacy_path = match legacy_yaml_path() {
@@ -2570,7 +2570,7 @@ pub fn init_config() -> anyhow::Result<()> {
     Ok(())
 }
 
-const DEFAULT_CONFIG_TEMPLATE: &str = r#"# wayland-core configuration
+const DEFAULT_CONFIG_TEMPLATE: &str = r#"# apexrouter-cli configuration
 
 # Default provider settings
 [default]
@@ -2671,7 +2671,7 @@ allow_list = ["Read", "Grep", "Glob"]
 # Session settings
 [session]
 enabled = true
-directory = ".wayland-core/sessions"  # relative to project root
+directory = ".apexrouter-cli/sessions"  # relative to project root
 max_sessions = 20                # auto-cleanup oldest
 
 # Hook system: run shell commands at tool lifecycle events
@@ -3860,7 +3860,7 @@ enabled = false
     #[test]
     fn test_resolve_with_project_dir_loads_project_config() {
         let tmp = tempfile::tempdir().unwrap();
-        let project_toml = tmp.path().join(".wayland-core.toml");
+        let project_toml = tmp.path().join(".apexrouter-cli.toml");
         std::fs::write(
             &project_toml,
             r#"
@@ -3966,7 +3966,7 @@ enabled = false
         // The full path: `[default] approval_mode` in TOML → resolved
         // Config.approval_mode (what the TUI boot consumer reads).
         let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join(".wayland-core.toml");
+        let project = tmp.path().join(".apexrouter-cli.toml");
         std::fs::write(&project, "[default]\napproval_mode = \"auto-edit\"\n").unwrap();
         let cli = CliArgs {
             provider: Some("anthropic".into()),
@@ -4100,29 +4100,29 @@ skills_lifecycle = true
     }
 
     // -------------------------------------------------------------------------
-    // F-010: wayland_config_dir() canonical helper tests
+    // F-010: apexrouter_config_dir() canonical helper tests
     // -------------------------------------------------------------------------
 
     #[test]
-    fn wayland_config_dir_uses_wayland_home_when_set() {
+    fn apexrouter_config_dir_uses_apexrouter_home_when_set() {
         // Serial isolation is not required here because we restore the env var
         // within the test; the variable name is unique to this assertion.
-        let key = "WAYLAND_HOME";
+        let key = "APEXROUTER_CLI_HOME";
         let prev = std::env::var_os(key);
         unsafe {
-            std::env::set_var(key, "/tmp/test-wayland-home");
+            std::env::set_var(key, "/tmp/test-apexrouter-home");
         }
-        let dir = wayland_config_dir();
+        let dir = apexrouter_config_dir();
         match prev {
             Some(v) => unsafe { std::env::set_var(key, v) },
             None => unsafe { std::env::remove_var(key) },
         }
-        assert_eq!(dir, std::path::PathBuf::from("/tmp/test-wayland-home"));
+        assert_eq!(dir, std::path::PathBuf::from("/tmp/test-apexrouter-home"));
     }
 
     #[test]
-    fn wayland_config_dir_uses_xdg_data_home_when_no_wayland_home() {
-        let wh_key = "WAYLAND_HOME";
+    fn apexrouter_config_dir_uses_xdg_data_home_when_no_apexrouter_home() {
+        let wh_key = "APEXROUTER_CLI_HOME";
         let xdg_key = "XDG_DATA_HOME";
         let prev_wh = std::env::var_os(wh_key);
         let prev_xdg = std::env::var_os(xdg_key);
@@ -4130,7 +4130,7 @@ skills_lifecycle = true
             std::env::remove_var(wh_key);
             std::env::set_var(xdg_key, "/tmp/test-xdg");
         }
-        let dir = wayland_config_dir();
+        let dir = apexrouter_config_dir();
         match prev_wh {
             Some(v) => unsafe { std::env::set_var(wh_key, v) },
             None => unsafe { std::env::remove_var(wh_key) },
@@ -4139,13 +4139,13 @@ skills_lifecycle = true
             Some(v) => unsafe { std::env::set_var(xdg_key, v) },
             None => unsafe { std::env::remove_var(xdg_key) },
         }
-        assert_eq!(dir, std::path::PathBuf::from("/tmp/test-xdg/wayland-core"));
+        assert_eq!(dir, std::path::PathBuf::from("/tmp/test-xdg/apexrouter-cli"));
     }
 
     #[test]
-    fn wayland_config_dir_falls_back_to_dirs_config_dir() {
-        // When neither env var is set, result ends with "wayland-core".
-        let wh_key = "WAYLAND_HOME";
+    fn apexrouter_config_dir_falls_back_to_dirs_config_dir() {
+        // When neither env var is set, result ends with "apexrouter-cli".
+        let wh_key = "APEXROUTER_CLI_HOME";
         let xdg_key = "XDG_DATA_HOME";
         let prev_wh = std::env::var_os(wh_key);
         let prev_xdg = std::env::var_os(xdg_key);
@@ -4153,7 +4153,7 @@ skills_lifecycle = true
             std::env::remove_var(wh_key);
             std::env::remove_var(xdg_key);
         }
-        let dir = wayland_config_dir();
+        let dir = apexrouter_config_dir();
         match prev_wh {
             Some(v) => unsafe { std::env::set_var(wh_key, v) },
             None => unsafe { std::env::remove_var(wh_key) },
@@ -4163,20 +4163,20 @@ skills_lifecycle = true
             None => unsafe { std::env::remove_var(xdg_key) },
         }
         assert!(
-            dir.ends_with("wayland-core"),
-            "expected path ending in wayland-core, got {}",
+            dir.ends_with("apexrouter-cli"),
+            "expected path ending in apexrouter-cli, got {}",
             dir.display()
         );
     }
 
     // -------------------------------------------------------------------------
-    // profile_home() — canonical ~/.wayland resolution (B1)
+    // profile_home() — canonical ~/.apexrouter resolution (B1)
     // -------------------------------------------------------------------------
 
     #[test]
-    #[serial_test::serial(wayland_home_env)]
-    fn profile_home_uses_wayland_home_override() {
-        let key = "WAYLAND_HOME";
+    #[serial_test::serial(apexrouter_home_env)]
+    fn profile_home_uses_apexrouter_home_override() {
+        let key = "APEXROUTER_CLI_HOME";
         let prev = std::env::var_os(key);
         unsafe {
             std::env::set_var(key, "/tmp/test-profile-home");
@@ -4192,9 +4192,9 @@ skills_lifecycle = true
     // F12: an override containing a control char (e.g. NUL) is ignored — we
     // fall through to the default instead of propagating a poisoned value.
     #[test]
-    #[serial_test::serial(wayland_home_env)]
+    #[serial_test::serial(apexrouter_home_env)]
     fn profile_home_ignores_control_char_override() {
-        let key = "WAYLAND_HOME";
+        let key = "APEXROUTER_CLI_HOME";
         let prev = std::env::var_os(key);
         // A tab/newline is a control char `set_var` still accepts (unlike NUL),
         // so it exercises the guard without panicking the test harness.
@@ -4212,16 +4212,16 @@ skills_lifecycle = true
             home.display()
         );
         assert!(
-            home.ends_with(".wayland"),
+            home.ends_with(".apexrouter"),
             "must fall through to the default, got {}",
             home.display()
         );
     }
 
     #[test]
-    #[serial_test::serial(wayland_home_env)]
-    fn profile_home_defaults_to_home_dot_wayland() {
-        let key = "WAYLAND_HOME";
+    #[serial_test::serial(apexrouter_home_env)]
+    fn profile_home_defaults_to_home_dot_apexrouter() {
+        let key = "APEXROUTER_CLI_HOME";
         let prev = std::env::var_os(key);
         unsafe {
             std::env::remove_var(key);
@@ -4231,48 +4231,48 @@ skills_lifecycle = true
             Some(v) => unsafe { std::env::set_var(key, v) },
             None => unsafe { std::env::remove_var(key) },
         }
-        // Default ends in ".wayland" and is anchored at the user's home dir,
+        // Default ends in ".apexrouter" and is anchored at the user's home dir,
         // never a hardcoded absolute root.
         assert!(
-            home.ends_with(".wayland"),
-            "expected path ending in .wayland, got {}",
+            home.ends_with(".apexrouter"),
+            "expected path ending in .apexrouter, got {}",
             home.display()
         );
         if let Some(h) = dirs::home_dir() {
-            assert_eq!(home, h.join(".wayland"));
+            assert_eq!(home, h.join(".apexrouter"));
         }
     }
 
     // -------------------------------------------------------------------------
-    // #275 / F-010: yaml→toml migration must honour WAYLAND_HOME
+    // #275 / F-010: yaml→toml migration must honour APEXROUTER_CLI_HOME
     //
     // Pre-fix bug: `migrate_legacy_yaml_if_needed` resolved the legacy yaml
     // path against `dirs::home_dir()`, so every sandboxed/test process under
-    // `WAYLAND_HOME` was reading the real user's `~/.wayland/config.yaml`.
+    // `APEXROUTER_CLI_HOME` was reading the real user's `~/.apexrouter/config.yaml`.
     // That broke hermeticity and polluted test runs.
     // -------------------------------------------------------------------------
 
     #[test]
-    #[serial_test::serial(wayland_home_env)]
-    fn migrate_legacy_yaml_reads_from_wayland_home_when_set() {
-        let wh_key = "WAYLAND_HOME";
+    #[serial_test::serial(apexrouter_home_env)]
+    fn migrate_legacy_yaml_reads_from_apexrouter_home_when_set() {
+        let wh_key = "APEXROUTER_CLI_HOME";
         let xdg_key = "XDG_DATA_HOME";
         let prev_wh = std::env::var_os(wh_key);
         let prev_xdg = std::env::var_os(xdg_key);
 
-        // Sandbox: `WAYLAND_HOME` points at an isolated tempdir that doubles
+        // Sandbox: `APEXROUTER_CLI_HOME` points at an isolated tempdir that doubles
         // as the legacy-yaml lookup root and the canonical TOML root.
         let sandbox = tempfile::tempdir().expect("tempdir sandbox");
         let sandbox_path = sandbox.path().to_path_buf();
 
         unsafe {
             std::env::set_var(wh_key, &sandbox_path);
-            // Remove XDG so wayland_config_dir() resolves purely via WAYLAND_HOME.
+            // Remove XDG so apexrouter_config_dir() resolves purely via APEXROUTER_CLI_HOME.
             std::env::remove_var(xdg_key);
         }
 
         // Seed a sentinel yaml INSIDE the sandbox.  The migration must read
-        // THIS file (not Sean's real ~/.wayland/config.yaml on the host).
+        // THIS file (not Sean's real ~/.apexrouter/config.yaml on the host).
         let sandbox_yaml = sandbox_path.join("config.yaml");
         std::fs::write(
             &sandbox_yaml,
@@ -4282,7 +4282,7 @@ skills_lifecycle = true
 
         // Run the migration.  Canonical TOML must be created INSIDE the
         // sandbox with the sentinel model, proving the migration honoured
-        // WAYLAND_HOME on BOTH the read path (yaml lookup) and the write
+        // APEXROUTER_CLI_HOME on BOTH the read path (yaml lookup) and the write
         // path (canonical TOML).
         migrate_legacy_yaml_if_needed();
 
@@ -4303,7 +4303,7 @@ skills_lifecycle = true
         assert!(
             canonical_toml.exists(),
             "migration did not create canonical TOML at {} — \
-             likely read yaml from real $HOME instead of WAYLAND_HOME",
+             likely read yaml from real $HOME instead of APEXROUTER_CLI_HOME",
             canonical_toml.display()
         );
         assert!(
@@ -4311,7 +4311,7 @@ skills_lifecycle = true
             "canonical TOML missing sandbox sentinel model; \
              contents:\n{toml_contents}\n\
              (this means the migration read yaml from somewhere other than \
-             WAYLAND_HOME — hermeticity bug)"
+             APEXROUTER_CLI_HOME — hermeticity bug)"
         );
     }
 
@@ -4375,9 +4375,9 @@ skills_lifecycle = true
     // -------------------------------------------------------------------------
 
     #[test]
-    #[serial_test::serial(wayland_home_env)]
+    #[serial_test::serial(apexrouter_home_env)]
     fn migrate_legacy_yaml_skips_when_canonical_toml_exists() {
-        let wh_key = "WAYLAND_HOME";
+        let wh_key = "APEXROUTER_CLI_HOME";
         let xdg_key = "XDG_DATA_HOME";
         let prev_wh = std::env::var_os(wh_key);
         let prev_xdg = std::env::var_os(xdg_key);
@@ -4428,9 +4428,9 @@ skills_lifecycle = true
     }
 
     #[test]
-    #[serial_test::serial(wayland_home_env)]
+    #[serial_test::serial(apexrouter_home_env)]
     fn migrate_legacy_yaml_writes_toml_on_first_run() {
-        let wh_key = "WAYLAND_HOME";
+        let wh_key = "APEXROUTER_CLI_HOME";
         let xdg_key = "XDG_DATA_HOME";
         let prev_wh = std::env::var_os(wh_key);
         let prev_xdg = std::env::var_os(xdg_key);

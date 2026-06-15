@@ -1,6 +1,6 @@
 //! Project context file auto-detection — walks up the directory tree
-//! from `cwd` looking for known project-context files (WAYLAND.md,
-//! AGENTS.md, `.wayland/context.md`, CLAUDE.md) and concatenates them.
+//! from `cwd` looking for known project-context files (APEXROUTER.md,
+//! AGENTS.md, `.apexrouter/context.md`, CLAUDE.md) and concatenates them.
 //!
 //! Phase 1.C.1: synchronous scan + concat. Hot-reload via notify-rs is
 //! deferred — engine re-runs `scan` at session start.
@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 
 /// File names checked at each ancestor directory.
 pub const CONTEXT_FILE_NAMES: &[&str] = &[
-    "WAYLAND.md",
+    "APEXROUTER.md",
     "AGENTS.md",
-    ".wayland/context.md",
+    ".apexrouter/context.md",
     "CLAUDE.md",
 ];
 
@@ -49,7 +49,7 @@ impl ProjectContext {
 
 pub fn scan(start: &Path) -> std::io::Result<ProjectContext> {
     let mut ctx = ProjectContext::default();
-    // F-046: dedup by canonical path so `./WAYLAND.md` and `WAYLAND.md`
+    // F-046: dedup by canonical path so `./APEXROUTER.md` and `APEXROUTER.md`
     // (which both resolve to the same inode when `start` is `.`) are not
     // added twice. `canonicalize` follows symlinks and resolves `..`/`.`
     // components. If `canonicalize` fails (e.g. path is a dangling
@@ -95,45 +95,45 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let child = root.path().join("a").join("b").join("c");
         fs::create_dir_all(&child).expect("create_dir_all");
-        fs::write(root.path().join("WAYLAND.md"), "ROOT").expect("root");
+        fs::write(root.path().join("APEXROUTER.md"), "ROOT").expect("root");
         fs::write(child.join("AGENTS.md"), "LEAF").expect("leaf");
         let ctx = scan(&child).expect("scan");
         assert_eq!(ctx.files.len(), 2);
         assert!(ctx.files[0].path.ends_with("AGENTS.md"));
         assert_eq!(ctx.files[0].body, "LEAF");
-        assert!(ctx.files[1].path.ends_with("WAYLAND.md"));
+        assert!(ctx.files[1].path.ends_with("APEXROUTER.md"));
         assert_eq!(ctx.files[1].body, "ROOT");
     }
 
     #[test]
     fn rendered_concatenates_with_headers() {
         let root = tempfile::tempdir().expect("tempdir");
-        fs::write(root.path().join("WAYLAND.md"), "alpha\n").expect("file");
+        fs::write(root.path().join("APEXROUTER.md"), "alpha\n").expect("file");
         let ctx = scan(root.path()).expect("scan");
         let rendered = ctx.rendered().expect("rendered");
-        assert!(rendered.contains("WAYLAND.md"));
+        assert!(rendered.contains("APEXROUTER.md"));
         assert!(rendered.contains("alpha"));
     }
 
     #[test]
-    fn nested_wayland_dir_context_discovered() {
+    fn nested_apexrouter_dir_context_discovered() {
         let root = tempfile::tempdir().expect("tempdir");
-        let wayland = root.path().join(".wayland");
-        fs::create_dir_all(&wayland).expect("mkdir");
-        fs::write(wayland.join("context.md"), "wayland-ctx").expect("write");
+        let apexrouter = root.path().join(".apexrouter");
+        fs::create_dir_all(&apexrouter).expect("mkdir");
+        fs::write(apexrouter.join("context.md"), "apexrouter-ctx").expect("write");
         let ctx = scan(root.path()).expect("scan");
-        assert!(ctx.files.iter().any(|f| f.body == "wayland-ctx"));
+        assert!(ctx.files.iter().any(|f| f.body == "apexrouter-ctx"));
     }
 
     /// F-046: scanning from Path::new(".") must NOT produce duplicate entries.
-    /// The bug: `Path::new(".").parent()` is `Some("")`, and `"".join("WAYLAND.md")`
-    /// resolves to `WAYLAND.md` — same inode as `./WAYLAND.md`. Without
+    /// The bug: `Path::new(".").parent()` is `Some("")`, and `"".join("APEXROUTER.md")`
+    /// resolves to `APEXROUTER.md` — same inode as `./APEXROUTER.md`. Without
     /// canonical-path dedup, both paths pass the NotFound check and the file
     /// is emitted twice.
     #[test]
     fn no_duplicates_when_scanning_from_dot() {
         let root = tempfile::tempdir().expect("tempdir");
-        let file_path = root.path().join("WAYLAND.md");
+        let file_path = root.path().join("APEXROUTER.md");
         fs::write(&file_path, "dedup-check").expect("write");
 
         // Run scan from the temp dir itself (not from `.` so the path is

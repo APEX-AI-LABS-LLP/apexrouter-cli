@@ -273,7 +273,7 @@ impl ImageFetcher for HttpImageFetcher {
             .timeout(std::time::Duration::from_secs(20))
             .header(
                 reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (compatible; wayland-core/Vision)",
+                "Mozilla/5.0 (compatible; apexrouter-cli/Vision)",
             )
             .header(reqwest::header::ACCEPT, "image/*,*/*;q=0.8")
             .send()
@@ -326,7 +326,7 @@ impl AudioFetcher for HttpAudioFetcher {
             .timeout(std::time::Duration::from_secs(30))
             .header(
                 reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (compatible; wayland-core/Transcribe)",
+                "Mozilla/5.0 (compatible; apexrouter-cli/Transcribe)",
             )
             .send()
             .await

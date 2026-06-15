@@ -738,7 +738,7 @@ impl Router {
     /// body, the overlay (if any), and the one-row bottom status bar.
     ///
     /// Layout, top to bottom:
-    ///  * row 0      — the top chrome: `◆ WAYLAND` wordmark + the inline
+    ///  * row 0      — the top chrome: `◆ APEXROUTER` wordmark + the inline
     ///    surface tabs. Brand + navigation only, no live stats.
     ///  * the body   — the active surface (and any overlay over it).
     ///  * last row   — the bottom status bar: provider·model, mode, the
@@ -2260,8 +2260,8 @@ fn render_skills_list(inv: Option<&EngineInventory>) -> String {
     };
     let skills = &inv.skills;
     if skills.is_empty() {
-        return "No skills loaded. Drop a SKILL.md in .wayland-core/skills/ \
-                (or ~/.wayland/skills/) and it shows up here."
+        return "No skills loaded. Drop a SKILL.md in .apexrouter-cli/skills/ \
+                (or ~/.apexrouter/skills/) and it shows up here."
             .to_string();
     }
     let invocable = skills.iter().filter(|s| s.user_invocable).count();
@@ -2348,7 +2348,7 @@ fn render_resume(sessions: &[wcore_agent::session::SessionMeta], arg: Option<&st
         let hit = sessions.iter().find(|m| m.id == id || m.id.starts_with(id));
         return match hit {
             Some(m) => format!(
-                "Session {} — \"{}\".\nLive in-session resume isn't wired yet; reopen it with:\n  wayland-core --resume {}",
+                "Session {} — \"{}\".\nLive in-session resume isn't wired yet; reopen it with:\n  apexrouter-cli --resume {}",
                 short_id(&m.id),
                 one_line(&m.summary, 60),
                 short_id(&m.id),
@@ -2374,7 +2374,7 @@ fn render_resume(sessions: &[wcore_agent::session::SessionMeta], arg: Option<&st
             one_line(&m.summary, 50),
         ));
     }
-    out.push_str("\nReopen one with `wayland-core --resume <id>` (live in-TUI resume is coming).");
+    out.push_str("\nReopen one with `apexrouter-cli --resume <id>` (live in-TUI resume is coming).");
     out
 }
 
@@ -2398,7 +2398,7 @@ fn render_provider(active: &str, arg: Option<&str>) -> String {
             return format!(
                 "Switching to `{n}` re-authenticates and reloads provider compat — that's a \
                  restart, not a live swap. Do it with /setup, or relaunch with a profile:\n  \
-                 wayland-core --profile <name>\n(Use /model to switch models within the current \
+                 apexrouter-cli --profile <name>\n(Use /model to switch models within the current \
                  provider — no restart.)"
             );
         }
@@ -2440,7 +2440,7 @@ fn render_profile(profiles: &[(String, String, String)], arg: Option<&str>) -> S
         return match profiles.iter().find(|(n, _, _)| n == name) {
             Some((n, provider, model)) => format!(
                 "Profile `{n}` → {}{}. Applying a profile re-resolves config — relaunch with:\n  \
-                 wayland-core --profile {n}",
+                 apexrouter-cli --profile {n}",
                 provider_or(provider),
                 model_suffix(model),
             ),
@@ -2462,7 +2462,7 @@ fn render_profile(profiles: &[(String, String, String)], arg: Option<&str>) -> S
             model_suffix(model)
         ));
     }
-    out.push_str("\nActivate one by relaunching: `wayland-core --profile <name>`.");
+    out.push_str("\nActivate one by relaunching: `apexrouter-cli --profile <name>`.");
     out
 }
 
@@ -2472,8 +2472,8 @@ fn render_profile(profiles: &[(String, String, String)], arg: Option<&str>) -> S
 fn render_replay() -> String {
     "Replay deterministically re-runs a recorded session trace — it's a boot mode for \
      debugging, not an in-session action. Run it from your shell:\n  \
-     wayland-core --replay <trace.json>\n  \
-     wayland-core --replay <trace.json> --replay-diff <other.json>   (find the first divergence)\n\n\
+     apexrouter-cli --replay <trace.json>\n  \
+     apexrouter-cli --replay <trace.json> --replay-diff <other.json>   (find the first divergence)\n\n\
      Point --replay at a trace the engine recorded to verify it re-executes identically on \
      this build."
         .to_string()
@@ -2487,7 +2487,7 @@ fn render_replay() -> String {
 /// checkpoints accrue as turns complete — never a faked entry.
 fn render_rewind_list(metas: &[crate::tui::checkpoint::CheckpointMeta]) -> String {
     if metas.is_empty() {
-        return "No checkpoints yet. Wayland snapshots the files the agent touches at the \
+        return "No checkpoints yet. ApexRouter snapshots the files the agent touches at the \
                 end of each turn, so a restore point appears here after your first turn. \
                 Then `/rewind <id>` restores the workspace to that snapshot."
             .to_string();
@@ -3033,7 +3033,7 @@ mod tests {
     #[test]
     fn top_chrome_carries_brand_and_tabs_on_one_row() {
         // The 7-row layout (top_pad / chrome / divider / body / divider /
-        // status / bot_pad) places the `◆ WAYLAND` wordmark + tabs on
+        // status / bot_pad) places the `◆ APEXROUTER` wordmark + tabs on
         // row 1 (row 0 is intentional pad so the chrome doesn't crowd
         // the terminal edge).
         let mut app = App::new();
@@ -3042,7 +3042,7 @@ mod tests {
         let out = render_to_string(&mut router, &app, 120, 24);
         let chrome_line = out.lines().nth(1).unwrap_or("");
         assert!(
-            chrome_line.contains("WAYLAND"),
+            chrome_line.contains("APEXROUTER"),
             "wordmark not on the chrome row:\n{chrome_line}"
         );
         assert!(
@@ -3053,7 +3053,7 @@ mod tests {
 
     #[test]
     fn top_chrome_is_shown_on_onboarding() {
-        // The `◆ WAYLAND` chrome is painted on EVERY surface — including
+        // The `◆ APEXROUTER` chrome is painted on EVERY surface — including
         // Onboarding — so the product identity is always present.
         let app = App::new();
         let mut router = Router::new(&app);
@@ -3061,7 +3061,7 @@ mod tests {
         let out = render_to_string(&mut router, &app, 120, 24);
         let chrome_line = out.lines().nth(1).unwrap_or("");
         assert!(
-            chrome_line.contains('◆') && chrome_line.contains("WAYLAND"),
+            chrome_line.contains('◆') && chrome_line.contains("APEXROUTER"),
             "top chrome missing on the chrome row of Onboarding:\n{chrome_line}"
         );
     }
@@ -3917,7 +3917,7 @@ mod tests {
 
         // `/resume <prefix>` resolves to the exact restart command.
         let one = render_resume(&sessions, Some("cccc2222"));
-        assert!(one.contains("wayland-core --resume cccc2222"), "got: {one}");
+        assert!(one.contains("apexrouter-cli --resume cccc2222"), "got: {one}");
         assert!(one.contains("newest work"));
 
         // Unknown id → honest miss, never a fake.
@@ -3967,7 +3967,7 @@ mod tests {
 
         // `/profile <name>`: exact relaunch command.
         let one = render_profile(&profiles, Some("work"));
-        assert!(one.contains("wayland-core --profile work"), "got: {one}");
+        assert!(one.contains("apexrouter-cli --profile work"), "got: {one}");
 
         // Unknown + empty cases stay honest.
         assert!(render_profile(&profiles, Some("ghost")).contains("No profile named"));
@@ -4134,7 +4134,7 @@ mod tests {
             "resume must confirm the in-TUI reopen, not hand back a CLI string: {transcript}"
         );
         assert!(
-            !transcript.contains("wayland-core --resume"),
+            !transcript.contains("apexrouter-cli --resume"),
             "the wired /resume must reopen, not print a relaunch command: {transcript}"
         );
         // And it actually paints — drive the real render so the assertion is a
@@ -4213,7 +4213,7 @@ mod tests {
             "/profile must drive the live load, not print a relaunch command: {last}"
         );
         assert!(
-            !last.contains("wayland-core --profile"),
+            !last.contains("apexrouter-cli --profile"),
             "the phantom-verb relaunch copy must be gone from the load path: {last}"
         );
     }
@@ -4223,7 +4223,7 @@ mod tests {
         // /replay hands over the real boot-mode command, never fakes a viewer.
         let replay = render_replay();
         assert!(
-            replay.contains("wayland-core --replay <trace.json>"),
+            replay.contains("apexrouter-cli --replay <trace.json>"),
             "got: {replay}"
         );
         assert!(replay.contains("--replay-diff"));

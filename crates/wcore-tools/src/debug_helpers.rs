@@ -16,10 +16,10 @@
 //! the Hermes semantics. Construction is cheap (one `env::var` lookup,
 //! no allocation when disabled past the empty `Vec`).
 //!
-//! Log files land in `wayland_config_dir()/logs/` (e.g.
-//! `~/Library/Application Support/wayland-core/logs/` on macOS, or
-//! `$WAYLAND_HOME/logs/` in sandboxed/hermetic runs). Resolved via
-//! `wcore_config::config::wayland_config_dir()` so `WAYLAND_HOME` traps
+//! Log files land in `apexrouter_config_dir()/logs/` (e.g.
+//! `~/Library/Application Support/apexrouter-cli/logs/` on macOS, or
+//! `$APEXROUTER_CLI_HOME/logs/` in sandboxed/hermetic runs). Resolved via
+//! `wcore_config::config::apexrouter_config_dir()` so `APEXROUTER_CLI_HOME` traps
 //! the log path alongside the rest of the engine's state (F-010, #270).
 //! We never write to `/tmp` or CWD as a fallback.
 
@@ -33,14 +33,14 @@ use uuid::Uuid;
 
 /// Resolve the directory where debug session logs are written.
 ///
-/// Routes through `wcore_config::config::wayland_config_dir()` so
-/// `WAYLAND_HOME` hermetically sandboxes debug logs alongside the rest of
+/// Routes through `wcore_config::config::apexrouter_config_dir()` so
+/// `APEXROUTER_CLI_HOME` hermetically sandboxes debug logs alongside the rest of
 /// the engine's on-disk state (F-010, #270). Returns `Some` in all cases
-/// since the canonical helper has a `PathBuf::from("wayland-core")`
+/// since the canonical helper has a `PathBuf::from("apexrouter-cli")`
 /// fallback; we keep the `Option` signature so callers can opt out
 /// uniformly if a future variant of the helper goes back to `Option`.
 fn default_log_dir() -> Option<PathBuf> {
-    Some(wcore_config::config::wayland_config_dir().join("logs"))
+    Some(wcore_config::config::apexrouter_config_dir().join("logs"))
 }
 
 /// One recorded tool-call entry. Mirrors the Hermes JSON shape:

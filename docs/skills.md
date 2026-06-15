@@ -21,22 +21,22 @@ wins for duplicate names):
 
 | Priority | Path | Description |
 |----------|------|-------------|
-| 1 | `.wayland-core/skills/` | Project-local skills (checked-in with the repo) |
-| 2 | `<CONFIG_DIR>/wayland-core/skills/` | User-global skills (see below) |
-| 3 | `.wayland-core/commands/` | Legacy flat `.md` files (backward compatibility) |
+| 1 | `.apexrouter-cli/skills/` | Project-local skills (checked-in with the repo) |
+| 2 | `<CONFIG_DIR>/apexrouter-cli/skills/` | User-global skills (see below) |
+| 3 | `.apexrouter-cli/commands/` | Legacy flat `.md` files (backward compatibility) |
 
 > **`<CONFIG_DIR>` by platform:**
 > - **macOS:** `~/Library/Application Support/`
 > - **Linux:** `~/.config/` (or `$XDG_CONFIG_HOME`)
 > - **Windows:** `C:\Users\<USER>\AppData\Roaming\`
 >
-> Run `wayland-core --skills-path` to see the actual paths on your machine.
+> Run `apexrouter-cli --skills-path` to see the actual paths on your machine.
 
 Each skill is either a single `SKILL.md` file inside a named subdirectory, or
 a flat `.md` file in a `commands/` directory:
 
 ```
-.wayland-core/skills/
+.apexrouter-cli/skills/
 ├── deploy/
 │   └── SKILL.md          # invoked as "deploy"
 ├── review-pr/
@@ -122,10 +122,6 @@ Inside the skill body, the following variables are replaced at runtime:
 | `${WCORE_SKILL_DIR}` | Absolute path to the directory containing this skill's `SKILL.md` |
 | `${WCORE_SESSION_ID}` | Current session ID (when sessions are enabled) |
 
-`${AIONRS_SKILL_DIR}` and `${AIONRS_SESSION_ID}` are kept as backward-compat
-aliases — skills authored before the rebrand continue to work unchanged. New
-skills should prefer the `WCORE_*` form.
-
 Example:
 
 ```markdown
@@ -210,10 +206,10 @@ Use `--skills-path` to see which directories are being scanned and whether
 they exist on disk:
 
 ```
-$ wayland-core --skills-path
-User:    ~/Library/Application Support/wayland-core/skills  (exists)
-Project: /path/to/repo/.wayland-core/skills                 (exists)
-Legacy:  /path/to/repo/.wayland-core/commands                (not found)
+$ apexrouter-cli --skills-path
+User:    ~/Library/Application Support/apexrouter-cli/skills  (exists)
+Project: /path/to/repo/.apexrouter-cli/skills                 (exists)
+Legacy:  /path/to/repo/.apexrouter-cli/commands                (not found)
 ```
 
 ## Progressive loading (W4)
@@ -257,9 +253,9 @@ half-materialised state.
 
 ## Audit (W4)
 
-Run `wayland-core --skills-audit` to scan the current project's
+Run `apexrouter-cli --skills-audit` to scan the current project's
 skill corpus. Outputs a Markdown summary on stdout and a
-machine-readable JSON report at `.wayland-core/skills-audit.json`
+machine-readable JSON report at `.apexrouter-cli/skills-audit.json`
 with three finding kinds:
 
 - `stale` — last modified beyond the configured threshold (default 180 days).

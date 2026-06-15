@@ -8,7 +8,7 @@ use crate::frontmatter::{parse_frontmatter_with_source, parse_skill_fields};
 use crate::mcp::load_mcp_skills;
 use crate::paths::{
     additional_skills_dirs, project_commands_dirs, project_skills_dirs, user_commands_dir,
-    user_skills_dir, wayland_home_skills_dirs,
+    user_skills_dir, apexrouter_home_skills_dirs,
 };
 use crate::types::{LoadedFrom, SkillMetadata, SkillSource};
 use wcore_mcp::manager::McpManager;
@@ -72,14 +72,14 @@ pub async fn load_all_skills(
         all.extend(load_skills_from_dir(&dir, SkillSource::User, LoadedFrom::Skills).await);
     }
 
-    // 1b. `$WAYLAND_HOME`-rooted skills, including the auto-skill drafter's
+    // 1b. `$APEXROUTER_CLI_HOME`-rooted skills, including the auto-skill drafter's
     // `skills/auto/` write target. Treated as user-tier so auto-drafted
     // skills learned in a prior session load on the next boot. Read path ==
-    // drafter write path (see `paths::wayland_home_skills_dirs`). The
+    // drafter write path (see `paths::apexrouter_home_skills_dirs`). The
     // recursive walk discovers each `<name>/SKILL.md`; later dedup-by-name
     // keeps the higher-priority `user_skills_dir()` copy when both resolve to
-    // the same `$WAYLAND_HOME` and a skill appears in both.
-    for dir in wayland_home_skills_dirs() {
+    // the same `$APEXROUTER_CLI_HOME` and a skill appears in both.
+    for dir in apexrouter_home_skills_dirs() {
         if dir.is_dir() {
             all.extend(load_skills_from_dir(&dir, SkillSource::User, LoadedFrom::Skills).await);
         }
@@ -373,8 +373,7 @@ async fn load_skill_file(
 
     let resolved_name = build_namespace(base_dir, skill_dir);
     // skill_root is the directory containing SKILL.md (i.e., skill_dir itself),
-    // used for ${WCORE_SKILL_DIR} (and the legacy ${AIONRS_SKILL_DIR} alias)
-    // variable substitution in skill content.
+    // used for ${WCORE_SKILL_DIR} variable substitution in skill content.
     let skill_root = Some(skill_dir.to_string_lossy().into_owned());
 
     let metadata = parse_skill_fields(
@@ -401,8 +400,8 @@ async fn load_skill_file(
 /// Build a colon-separated namespace from a directory hierarchy.
 ///
 /// Examples:
-/// - base=`<config_dir>/wayland-core/skills`, target=`<config_dir>/wayland-core/skills/db/migrate` → `"db:migrate"`
-/// - base=`<config_dir>/wayland-core/skills`, target=`<config_dir>/wayland-core/skills/my-skill` → `"my-skill"`
+/// - base=`<config_dir>/apexrouter-cli/skills`, target=`<config_dir>/apexrouter-cli/skills/db/migrate` → `"db:migrate"`
+/// - base=`<config_dir>/apexrouter-cli/skills`, target=`<config_dir>/apexrouter-cli/skills/my-skill` → `"my-skill"`
 pub(crate) fn build_namespace(base_dir: &Path, target_dir: &Path) -> String {
     match target_dir.strip_prefix(base_dir) {
         Ok(relative) => relative

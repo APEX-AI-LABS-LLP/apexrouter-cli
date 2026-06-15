@@ -37,11 +37,11 @@ use crate::plugins::sig_verifier::{
 };
 
 /// v0.6.5 Task 2.7b — env override for the on-disk plugins root.
-/// Mirrors the `WAYLAND_PLUGIN_TRUST_UNSIGNED` pattern from Task 1.3:
+/// Mirrors the `APEXROUTER_CLI_PLUGIN_TRUST_UNSIGNED` pattern from Task 1.3:
 /// unset = use [`PluginIdentity::default_plugin_root`]; set = use the
 /// override directory. Always honoured (including in tests) so fixtures
 /// can point at a tempdir.
-pub const ENV_PLUGINS_DIR: &str = "WAYLAND_PLUGINS_DIR";
+pub const ENV_PLUGINS_DIR: &str = "APEXROUTER_CLI_PLUGINS_DIR";
 
 /// A plugin that survived discovery + permission validation, ready to be
 /// `initialize()`d by `PluginRunner`.
@@ -163,7 +163,7 @@ impl<'a> PluginLoader<'a> {
     ///
     /// Returns `Err` from `try_discover` only when verification is on AND
     /// no key sources of any kind are available AND the
-    /// `WAYLAND_PLUGIN_TRUST_UNSIGNED` escape is unset — that config
+    /// `APEXROUTER_CLI_PLUGIN_TRUST_UNSIGNED` escape is unset — that config
     /// blocks every path-based plugin with no indication why.
     pub fn try_discover(config: &'a PluginsConfig) -> PluginResult<Self> {
         if config.plugin_signature_verification {
@@ -180,10 +180,10 @@ impl<'a> PluginLoader<'a> {
                         "plugin_signature_verification is enabled but no trusted keys \
                          are available — add at least one base64 ed25519 public key to \
                          trusted_plugin_keys in plugins.toml, drop *.pub files into \
-                         the trust-anchor directory (default ~/.wayland/trusted-keys, \
-                         override via WAYLAND_TRUSTED_KEYS_DIR), disable \
+                         the trust-anchor directory (default ~/.apexrouter/trusted-keys, \
+                         override via APEXROUTER_CLI_TRUSTED_KEYS_DIR), disable \
                          plugin_signature_verification, or set \
-                         WAYLAND_PLUGIN_TRUST_UNSIGNED=1 (DEV ONLY)."
+                         APEXROUTER_CLI_PLUGIN_TRUST_UNSIGNED=1 (DEV ONLY)."
                             .to_string(),
                     ));
                 }
@@ -205,7 +205,7 @@ impl<'a> PluginLoader<'a> {
         if trust_unsigned {
             tracing::warn!(
                 env = ENV_TRUST_UNSIGNED,
-                "WAYLAND_PLUGIN_TRUST_UNSIGNED is set — unsigned path-based plugins will be loaded \
+                "APEXROUTER_CLI_PLUGIN_TRUST_UNSIGNED is set — unsigned path-based plugins will be loaded \
                  (DEV ONLY; do not enable in production)"
             );
         }
@@ -245,8 +245,8 @@ impl<'a> PluginLoader<'a> {
     /// manifest through the runtime-dispatch table built in Task 2.7.
     ///
     /// Root resolution (see [`resolved_plugins_roots`]):
-    /// 1. `$WAYLAND_PLUGINS_DIR` (if set + non-empty) → that dir ONLY (override).
-    /// 2. Otherwise → both `<data_dir>/wayland/plugins` AND
+    /// 1. `$APEXROUTER_CLI_PLUGINS_DIR` (if set + non-empty) → that dir ONLY (override).
+    /// 2. Otherwise → both `<data_dir>/apexrouter/plugins` AND
     ///    `profile_home()/plugins` (the C3 profile home), scanned in order.
     ///
     /// Each root is its own security anchor: `allowed_roots` for the
@@ -791,7 +791,7 @@ pub(crate) fn enforce_path_signing(
         tracing::warn!(
             plugin = plugin_name,
             path = %path.display(),
-            "loading path-based plugin WITHOUT signature verification (WAYLAND_PLUGIN_TRUST_UNSIGNED=1)"
+            "loading path-based plugin WITHOUT signature verification (APEXROUTER_CLI_PLUGIN_TRUST_UNSIGNED=1)"
         );
         return Ok(());
     }
@@ -924,14 +924,14 @@ pub fn classify_runtime(
 /// v0.6.5 Task 2.7b — resolve the on-disk plugins root(s).
 ///
 /// Resolution:
-/// 1. If `$WAYLAND_PLUGINS_DIR` is set + non-empty → return ONLY that dir.
+/// 1. If `$APEXROUTER_CLI_PLUGINS_DIR` is set + non-empty → return ONLY that dir.
 ///    This is an explicit operator override: it REPLACES the default roots
 ///    (preserving the single-dir test isolation the on-disk discovery tests
 ///    rely on, and letting an operator pin discovery to one directory).
 /// 2. Otherwise → return both default roots, in order, de-duplicated:
 ///    first [`PluginIdentity::default_plugin_root`]
-///    (`<data_dir>/wayland/plugins`), then `profile_home()/plugins` (the C3
-///    profile home, i.e. `~/.wayland/plugins`, where a declarative plugin
+///    (`<data_dir>/apexrouter/plugins`), then `profile_home()/plugins` (the C3
+///    profile home, i.e. `~/.apexrouter/plugins`, where a declarative plugin
 ///    installed by IJFW's installer lands).
 ///
 /// Each returned root is its OWN security anchor in [`PluginLoader::discover_on_disk`]:
@@ -1065,7 +1065,7 @@ mod tests {
     #[test]
     fn try_discover_rejects_verification_enabled_with_no_trusted_keys() {
         // Point filesystem trust dir at an empty temp dir so the union is
-        // unambiguously empty regardless of the host's ~/.wayland setup.
+        // unambiguously empty regardless of the host's ~/.apexrouter setup.
         let tmp = TempDir::new().unwrap();
         let empty_dir = tmp.path().join("empty-keys");
         std::fs::create_dir_all(&empty_dir).unwrap();
@@ -1077,7 +1077,7 @@ mod tests {
         // SAFETY: env mutation in tests is acceptable here; this test
         // group is the only one in this module that touches these vars.
         unsafe {
-            std::env::set_var("WAYLAND_TRUSTED_KEYS_DIR", &empty_dir);
+            std::env::set_var("APEXROUTER_CLI_TRUSTED_KEYS_DIR", &empty_dir);
             std::env::remove_var(ENV_TRUST_UNSIGNED);
         }
 
@@ -1090,7 +1090,7 @@ mod tests {
 
         // Always restore env even on assertion failure.
         unsafe {
-            std::env::remove_var("WAYLAND_TRUSTED_KEYS_DIR");
+            std::env::remove_var("APEXROUTER_CLI_TRUSTED_KEYS_DIR");
         }
 
         let err = match result {
@@ -1123,11 +1123,11 @@ mod tests {
     // C3 — multi-root plugins discovery resolution.
     //
     // `resolved_plugins_roots()` must:
-    // - return ONLY the override dir when `$WAYLAND_PLUGINS_DIR` is set
+    // - return ONLY the override dir when `$APEXROUTER_CLI_PLUGINS_DIR` is set
     //   (preserving single-dir test isolation), and
     // - return BOTH `default_plugin_root()` and `profile_home()/plugins`
     //   when the override is unset (so an IJFW-installed declarative plugin
-    //   under `~/.wayland/plugins` is reachable).
+    //   under `~/.apexrouter/plugins` is reachable).
     // -----------------------------------------------------------------
 
     #[test]
@@ -1155,12 +1155,12 @@ mod tests {
         // SAFETY: env mutation is serialized by `#[serial_test::serial]`.
         // Both vars are saved + restored around the body.
         let saved_plugins = std::env::var_os(ENV_PLUGINS_DIR);
-        let saved_home = std::env::var_os("WAYLAND_HOME");
+        let saved_home = std::env::var_os("APEXROUTER_CLI_HOME");
         let home = TempDir::new().unwrap();
         unsafe {
             std::env::remove_var(ENV_PLUGINS_DIR);
             // Pin profile_home() to a deterministic location.
-            std::env::set_var("WAYLAND_HOME", home.path());
+            std::env::set_var("APEXROUTER_CLI_HOME", home.path());
         }
 
         let roots = resolved_plugins_roots();
@@ -1171,8 +1171,8 @@ mod tests {
                 None => std::env::remove_var(ENV_PLUGINS_DIR),
             }
             match saved_home {
-                Some(v) => std::env::set_var("WAYLAND_HOME", v),
-                None => std::env::remove_var("WAYLAND_HOME"),
+                Some(v) => std::env::set_var("APEXROUTER_CLI_HOME", v),
+                None => std::env::remove_var("APEXROUTER_CLI_HOME"),
             }
         }
 

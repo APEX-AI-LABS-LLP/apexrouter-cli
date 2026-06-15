@@ -15,7 +15,7 @@ pub mod unsupported;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
-// The Wayland module compiles on every target so the host adapter can
+// The ApexRouter module compiles on every target so the host adapter can
 // reference `compositor_allows_background_input` from the same path
 // regardless of platform. The non-Linux compilation only exposes the
 // probe; the `LinuxWaylandBackend` itself is Linux-only via inner cfg.

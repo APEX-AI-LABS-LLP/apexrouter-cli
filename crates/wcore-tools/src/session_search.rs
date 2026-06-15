@@ -1,10 +1,10 @@
 // T3-3.1.7: SessionSearchTool — long-term conversation recall.
 //
-// Ported from `wayland-hermes/agent/tools/session_search_tool.py` (MIT ©
+// Ported from `apexrouter-hermes/agent/tools/session_search_tool.py` (MIT ©
 // Nous Research). The Python version uses SQLite FTS5 against a session
 // transcript table, then summarizes the top matches with a cheap LLM.
 //
-// In wayland-core the session/episode store lives in `wcore-memory` (v2
+// In apexrouter-cli the session/episode store lives in `wcore-memory` (v2
 // 5-partition × 3-tier model), and the public `MemoryApi::search` entry
 // point returns ranked `Hit` rows with `session_id` + `preview` for every
 // matching episode. This tool wraps that surface so the agent can recall

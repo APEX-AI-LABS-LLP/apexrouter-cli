@@ -1,4 +1,4 @@
-//! `wcore-channel-email` — production email adapter for Wayland-Core.
+//! `wcore-channel-email` — production email adapter for ApexRouter-CLI.
 //!
 //! Outbound goes through SMTP via `lettre` (rustls-tls); inbound polls
 //! IMAP via the sync `imap` crate run on `tokio::task::spawn_blocking`.

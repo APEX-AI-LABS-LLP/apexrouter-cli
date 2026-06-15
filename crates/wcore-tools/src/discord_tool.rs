@@ -1,8 +1,8 @@
 //! T3-3.7 — Discord server introspection / management tool.
 //!
-//! Ported from `wayland-hermes/agent/tools/discord_tool.py` (MIT
+//! Ported from `apexrouter-hermes/agent/tools/discord_tool.py` (MIT
 //! © Nous Research). The Python original talks to Discord's REST API
-//! directly (urllib + bot token). Wayland's engine MUST NOT initiate
+//! directly (urllib + bot token). ApexRouter's engine MUST NOT initiate
 //! HTTP from inside `wcore-tools` (HTTP is a `wcore-providers` /
 //! plugin / host concern), so this port covers the **dispatch surface
 //! only**: schema, action manifest, per-action required-parameter
@@ -330,7 +330,7 @@ impl DiscordBackend for CapturingDiscordBackend {
     }
 }
 
-/// `discord_server` tool — Wayland engine port of `discord_tool.py`.
+/// `discord_server` tool — ApexRouter engine port of `discord_tool.py`.
 pub struct DiscordTool {
     backend: Arc<dyn DiscordBackend>,
     /// Optional pre-resolved allowlist of action names. `None` =

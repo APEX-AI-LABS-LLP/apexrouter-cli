@@ -7,19 +7,19 @@
 cargo build --release
 
 # Binary location
-./target/release/wayland-core
+./target/release/apexrouter-cli
 ```
 
 ## Command Format
 
 ```
-wayland-core [OPTIONS] [PROMPT]...
+apexrouter-cli [OPTIONS] [PROMPT]...
 ```
 
 - With `PROMPT`: single-shot mode — completes the task and exits
 - Without `PROMPT`: enters interactive REPL mode
 
-> For the full list of CLI parameters, run `wayland-core --help`.
+> For the full list of CLI parameters, run `apexrouter-cli --help`.
 
 ### Key Parameters
 
@@ -41,7 +41,7 @@ wayland-core [OPTIONS] [PROMPT]...
 ### Three-Level Cascading
 
 ```
-<global config>                   (global, user-level; run `wayland-core --config-path` to find)
+<global config>                   (global, user-level; run `apexrouter-cli --config-path` to find)
     ↓ overridden by
 <project config>                  (project-level, working directory — see layouts below)
     ↓ overridden by
@@ -54,8 +54,8 @@ from the level below.
 
 #### Global config
 
-A single user-level `config.toml`. Run `wayland-core --config-path` to print
-its location (it varies by OS). Created by `wayland-core --init-config`.
+A single user-level `config.toml`. Run `apexrouter-cli --config-path` to print
+its location (it varies by OS). Created by `apexrouter-cli --init-config`.
 
 #### Project config (two accepted layouts)
 
@@ -64,17 +64,17 @@ layouts:
 
 | Layout | Path | Notes |
 |--------|------|-------|
-| File form | `./.wayland-core.toml` | The documented, canonical layout. |
-| Directory form | `./.wayland-core/config.toml` | Also accepted (the eval-harness scaffold writes this form). |
+| File form | `./.apexrouter-cli.toml` | The documented, canonical layout. |
+| Directory form | `./.apexrouter-cli/config.toml` | Also accepted (the eval-harness scaffold writes this form). |
 
 The file form is canonical. If **both** files exist in the same directory,
-the file form (`.wayland-core.toml`) wins and a precedence warning is printed
+the file form (`.apexrouter-cli.toml`) wins and a precedence warning is printed
 to stderr — remove one file to silence it. Keep only one project layout per
 directory to avoid the warning.
 
 #### Legacy YAML (auto-migrated)
 
-A pre-TOML `~/.wayland/config.yaml` (honouring `WAYLAND_HOME` when set) is
+A pre-TOML `~/.apexrouter/config.yaml` (honouring `APEXROUTER_CLI_HOME` when set) is
 detected on startup and migrated to the canonical TOML config automatically;
 the migration is skipped once the canonical TOML exists. This path is for
 upgrading older installs and is not a layer you author by hand.
@@ -82,14 +82,14 @@ upgrading older installs and is not a layer you author by hand.
 ### Generate Default Config
 
 ```bash
-wayland-core --init-config
-# Creates the global config file (run `wayland-core --config-path` to see the location)
+apexrouter-cli --init-config
+# Creates the global config file (run `apexrouter-cli --config-path` to see the location)
 ```
 
 ### Config File Format
 
 ```toml
-# Global config file (path varies by OS, use `wayland-core --config-path` to find)
+# Global config file (path varies by OS, use `apexrouter-cli --config-path` to find)
 
 [default]
 provider = "anthropic"
@@ -134,7 +134,7 @@ allow_list = ["Read", "Grep", "Glob"]
 
 [session]
 enabled = true
-directory = ".wayland-core/sessions"
+directory = ".apexrouter-cli/sessions"
 max_sessions = 20
 
 [compact]
@@ -147,7 +147,7 @@ max_entries = 100
 
 [plan]
 enabled = true
-plan_directory = ".wayland-core/plans"
+plan_directory = ".apexrouter-cli/plans"
 ```
 
 ### API Key Resolution Order
@@ -185,24 +185,24 @@ base_url = "https://my-service.example.com/api/openai"
 ### 1. Initialize and Configure
 
 ```bash
-wayland-core --init-config
-# Edit the config file (run `wayland-core --config-path` to find it), add your API key
+apexrouter-cli --init-config
+# Edit the config file (run `apexrouter-cli --config-path` to find it), add your API key
 ```
 
 ### 2. Single-Shot Mode
 
 ```bash
-wayland-core "Read and explain crates/wcore-agent/src/engine.rs"
+apexrouter-cli "Read and explain crates/wcore-agent/src/engine.rs"
 ```
 
 ### 3. Interactive REPL
 
 ```
-$ wayland-core
+$ apexrouter-cli
 
 > Read the file Cargo.toml
      1  [package]
-     2  name = "wayland-core"
+     2  name = "apexrouter-cli"
      ...
 [turns: 1 | tokens: 1234 in / 567 out]
 
@@ -220,15 +220,15 @@ REPL commands: `/quit`, `/exit`, or empty line to exit.
 ### 4. Switching Profiles
 
 ```bash
-wayland-core --profile deepseek "Fix the bug in main.rs"
-wayland-core --profile ollama "Analyze code quality"
+apexrouter-cli --profile deepseek "Fix the bug in main.rs"
+apexrouter-cli --profile ollama "Analyze code quality"
 ```
 
 ### 5. Environment Variables
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-xxx
-wayland-core "List all Rust files in this project"
+apexrouter-cli "List all Rust files in this project"
 ```
 
 ---
@@ -257,20 +257,20 @@ Allow? [y]es / [n]o / [a]lways / [q]uit > y
 
 ## Session Management
 
-Sessions auto-save to `.wayland-core/sessions/`.
+Sessions auto-save to `.apexrouter-cli/sessions/`.
 
 ```bash
 # List saved sessions
-wayland-core --list-sessions
+apexrouter-cli --list-sessions
 
 # Resume the latest session
-wayland-core --resume latest
+apexrouter-cli --resume latest
 
 # Resume a specific session
-wayland-core --resume a1b2c3
+apexrouter-cli --resume a1b2c3
 
 # Create a session with a custom ID
-wayland-core --session-id my-conv-123
+apexrouter-cli --session-id my-conv-123
 ```
 
 - `--session-id` and `--resume` are mutually exclusive

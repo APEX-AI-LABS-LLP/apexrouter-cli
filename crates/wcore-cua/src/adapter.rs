@@ -2,19 +2,19 @@
 //! into a concrete `CuaTool`.
 //!
 //! Mirrors the audit F2 pattern from `wcore_browser::adapter`. The
-//! plugin shell (`wayland-cua`) registers a `CuaToolSpec` through the
+//! plugin shell (`apexrouter-cua`) registers a `CuaToolSpec` through the
 //! `wcore-plugin-api` mirror; the host (which DOES depend on
 //! `wcore-cua`) calls into this module to reify the spec into a real
 //! `CuaTool`.
 //!
 //! **Audit F7 positive invariance.** When the platform resolves to
 //! `LinuxWayland` AND the compositor probe returns false, `from_spec`
-//! returns `Err(CuaError::WaylandRestricted)` — registration is
+//! returns `Err(CuaError::ApexRouterRestricted)` — registration is
 //! refused at bootstrap rather than silently falling back.
 //!
 //! **Capability gating.** `from_spec` consults `computer_use_advertised`
 //! and refuses the registration with `CuaError::CapabilityDisabled`
-//! when the host hasn't advertised the flag. The wayland-cua plugin
+//! when the host hasn't advertised the flag. The apexrouter-cua plugin
 //! propagates this from `Capabilities.computer_use`.
 
 use std::sync::Arc;
@@ -82,7 +82,7 @@ pub fn from_spec(spec: CuaToolSpecLocal) -> CuaResult<Arc<CuaTool>> {
     }
     let platform = Platform::current();
     if matches!(platform, Platform::LinuxWayland) && !compositor_allows_background_input() {
-        return Err(CuaError::WaylandRestricted {
+        return Err(CuaError::ApexRouterRestricted {
             reason: "compositor does not permit cross-application background input".into(),
         });
     }
@@ -98,7 +98,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
-    fn clear_wayland_env() {
+    fn clear_apexrouter_env() {
         unsafe {
             std::env::remove_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE");
             std::env::remove_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED");
@@ -116,12 +116,12 @@ mod tests {
 
     #[test]
     #[serial]
-    fn from_spec_succeeds_on_non_linux_or_permissive_wayland() {
+    fn from_spec_succeeds_on_non_linux_or_permissive_apexrouter() {
         // Force permissive on Linux Wayland; ignored on macOS/Windows.
-        clear_wayland_env();
+        clear_apexrouter_env();
         unsafe { std::env::set_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE", "1") };
         let r = from_spec(CuaToolSpecLocal::default());
-        clear_wayland_env();
+        clear_apexrouter_env();
         assert!(
             r.is_ok(),
             "expected Ok, got error: {}",
@@ -134,14 +134,14 @@ mod tests {
         assert_eq!(tool.name(), "Cua");
     }
 
-    /// Audit F7: restricted Wayland compositor refuses registration.
+    /// Audit F7: restricted ApexRouter compositor refuses registration.
     /// Only meaningful on Linux because `Platform::current()` returns
-    /// non-Wayland on other targets; the test stays gated.
+    /// non-ApexRouter on other targets; the test stays gated.
     #[cfg(target_os = "linux")]
     #[test]
     #[serial]
-    fn restricted_wayland_compositor_refuses_to_register() {
-        clear_wayland_env();
+    fn restricted_apexrouter_compositor_refuses_to_register() {
+        clear_apexrouter_env();
         // Force the platform probe to think we're on Wayland AND
         // restricted.
         unsafe {
@@ -152,10 +152,10 @@ mod tests {
         unsafe {
             std::env::remove_var("WAYLAND_DISPLAY");
         }
-        clear_wayland_env();
+        clear_apexrouter_env();
         assert!(
-            matches!(r, Err(CuaError::WaylandRestricted { .. })),
-            "expected WaylandRestricted, got {}",
+            matches!(r, Err(CuaError::ApexRouterRestricted { .. })),
+            "expected ApexRouterRestricted, got {}",
             match &r {
                 Err(e) => format!("Err({e:?})"),
                 Ok(_) => "Ok(_)".to_string(),
@@ -166,8 +166,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     #[serial]
-    fn permissive_wayland_compositor_succeeds() {
-        clear_wayland_env();
+    fn permissive_apexrouter_compositor_succeeds() {
+        clear_apexrouter_env();
         unsafe {
             std::env::set_var("WAYLAND_DISPLAY", "wayland-test");
             std::env::set_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE", "1");
@@ -176,10 +176,10 @@ mod tests {
         unsafe {
             std::env::remove_var("WAYLAND_DISPLAY");
         }
-        clear_wayland_env();
+        clear_apexrouter_env();
         assert!(
             r.is_ok(),
-            "expected Ok on permissive Wayland, got {}",
+            "expected Ok on permissive ApexRouter, got {}",
             r.err()
                 .map(|e| e.to_string())
                 .unwrap_or_else(|| "<no error>".into())

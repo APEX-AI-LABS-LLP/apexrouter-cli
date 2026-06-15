@@ -673,7 +673,7 @@ mod tests {
         ];
         for text in all_text {
             assert!(
-                !text.contains("~/.config/wayland-core"),
+                !text.contains("~/.config/apexrouter-cli"),
                 "should not hardcode platform-specific path"
             );
             assert!(

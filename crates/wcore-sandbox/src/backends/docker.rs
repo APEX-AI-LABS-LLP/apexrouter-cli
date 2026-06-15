@@ -118,7 +118,7 @@ impl SandboxBackend for DockerBackend {
     #[cfg(not(feature = "live-docker"))]
     fn is_available(&self) -> bool {
         // sandbox-4: when the `live-docker` feature is compiled out, a
-        // `WAYLAND_SANDBOX=docker` request can never be satisfied. Returning
+        // `APEXROUTER_CLI_SANDBOX=docker` request can never be satisfied. Returning
         // a bare `false` made that indistinguishable from "daemon down" and
         // let selection silently degrade. Emit a loud, attributable warning
         // (once per process) so the operator learns the binary was built
@@ -130,7 +130,7 @@ impl SandboxBackend for DockerBackend {
                 "Docker backend requested but this build was compiled WITHOUT \
                  the `live-docker` feature — the Docker sandbox is unavailable. \
                  Rebuild with `--features live-docker`, choose a different \
-                 sandbox, or set WAYLAND_ALLOW_NO_SANDBOX=1 to run unsandboxed."
+                 sandbox, or set APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 to run unsandboxed."
             );
         });
         false

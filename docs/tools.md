@@ -170,7 +170,7 @@ walks the directory tree, never writes.
 
 ## Browser tool family (W8c.1)
 
-`Browser::*` tools are registered by the `wayland-browser` plugin
+`Browser::*` tools are registered by the `apexrouter-browser` plugin
 (via `wcore-browser`). Every op shares the ARIA-tree surface so
 prompt budgets stay bounded.
 
@@ -191,7 +191,7 @@ run; see `docs/json-stream-protocol.md` §§1.N+6 and 1.N+7.
 
 ## Computer use (W8c.2)
 
-`Cua::*` tools are registered by the `wayland-cua` plugin (via
+`Cua::*` tools are registered by the `apexrouter-cua` plugin (via
 `wcore-cua`). Every op honours the background-mode invariant: no
 foreground-app focus stealing.
 
@@ -215,7 +215,7 @@ engine emits `cua_event` and `cua_policy_denied` while ops run; see
 
 ## IJFW tools (W8c.3)
 
-`ijfw::*` tools are registered by the `wayland-ijfw` anchor plugin.
+`ijfw::*` tools are registered by the `apexrouter-ijfw` anchor plugin.
 The tool bodies delegate to the registered IJFW MCP server
 (`ijfw-memory`); both names below are addressable by the LLM through
 the standard `tool_request` flow.

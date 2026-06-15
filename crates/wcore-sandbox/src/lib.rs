@@ -10,11 +10,11 @@
 //!
 //! `default_for_platform` selects the platform's real backend by `cfg`:
 //! bubblewrap on Linux, sandbox-exec on macOS, AppContainer on Windows
-//! (Docker is an opt-in via `WAYLAND_SANDBOX=docker`). There is no
+//! (Docker is an opt-in via `APEXROUTER_CLI_SANDBOX=docker`). There is no
 //! unsandboxed default — when no real backend is available the dispatcher
 //! fails closed via `FailClosedBackend` (refusing execution), and only
 //! falls back to `NoSandboxBackend` under the explicit
-//! `WAYLAND_ALLOW_NO_SANDBOX=1` opt-in.
+//! `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1` opt-in.
 
 pub mod backends;
 pub mod error;
@@ -32,10 +32,10 @@ use std::time::{Duration, Instant};
 /// isolation when the platform's real sandbox is unavailable. Without it
 /// the sandbox layer fails CLOSED (refuses execution) rather than silently
 /// degrading to host-permission execution (audit M-2 / rel-concurrency-70).
-const ALLOW_NO_SANDBOX_ENV: &str = "WAYLAND_ALLOW_NO_SANDBOX";
+const ALLOW_NO_SANDBOX_ENV: &str = "APEXROUTER_CLI_ALLOW_NO_SANDBOX";
 
 /// True iff the operator has explicitly opted in to unsandboxed execution
-/// via `WAYLAND_ALLOW_NO_SANDBOX=1` (or `=true`).
+/// via `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1` (or `=true`).
 pub fn no_sandbox_opt_in() -> bool {
     std::env::var(ALLOW_NO_SANDBOX_ENV)
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -47,7 +47,7 @@ const DEGRADED_WARN_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Emit a warn-level log on EVERY unsandboxed selection, rate-limited to at
 /// most once per [`DEGRADED_WARN_INTERVAL`]. Unlike the process-global
-/// warn-once used for the explicit `WAYLAND_SANDBOX=none` path, this keeps
+/// warn-once used for the explicit `APEXROUTER_CLI_SANDBOX=none` path, this keeps
 /// the degraded-isolation state visible for the life of a long-running
 /// agent process instead of logging it exactly once at startup (audit M-2 /
 /// rel-concurrency-70).
@@ -68,15 +68,15 @@ fn warn_sandbox_degraded_rate_limited() {
         tracing::warn!(
             target: "wcore_sandbox",
             "sandbox UNAVAILABLE — running model-driven command with NO isolation \
-             (WAYLAND_ALLOW_NO_SANDBOX opt-in is set). Filesystem and network are \
-             unconfined. Install bubblewrap (Linux) or set WAYLAND_SANDBOX=docker.",
+             (APEXROUTER_CLI_ALLOW_NO_SANDBOX opt-in is set). Filesystem and network are \
+             unconfined. Install bubblewrap (Linux) or set APEXROUTER_CLI_SANDBOX=docker.",
         );
     }
 }
 
 /// Fail-closed backend selected when no real sandbox is available and the
 /// operator has NOT opted in to unsandboxed execution via
-/// `WAYLAND_ALLOW_NO_SANDBOX=1`.
+/// `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1`.
 ///
 /// Every `execute` call is refused with an error that names the remediation.
 /// This is the default-safe behavior: rather than silently substituting
@@ -98,8 +98,8 @@ impl FailClosedBackend {
         SandboxError::ExecFailed(
             "sandbox UNAVAILABLE and unsandboxed execution is not permitted — \
              refusing to run with host permissions. Install bubblewrap (Linux), \
-             set WAYLAND_SANDBOX=docker, or explicitly opt in with \
-             WAYLAND_ALLOW_NO_SANDBOX=1 to accept running with NO isolation."
+             set APEXROUTER_CLI_SANDBOX=docker, or explicitly opt in with \
+             APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 to accept running with NO isolation."
                 .into(),
         )
     }
@@ -130,7 +130,7 @@ impl backends::SandboxBackend for FailClosedBackend {
         tracing::error!(
             target: "wcore_sandbox",
             "refused unsandboxed command — no real sandbox backend available \
-             and WAYLAND_ALLOW_NO_SANDBOX is not set",
+             and APEXROUTER_CLI_ALLOW_NO_SANDBOX is not set",
         );
         Err(Self::refusal())
     }
@@ -138,7 +138,7 @@ impl backends::SandboxBackend for FailClosedBackend {
 
 /// Select the unsandboxed fallback backend, failing CLOSED by default.
 ///
-/// - If `WAYLAND_ALLOW_NO_SANDBOX=1` (or `=true`): warn (rate-limited, on
+/// - If `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1` (or `=true`): warn (rate-limited, on
 ///   every selection) and return [`backends::no_sandbox::NoSandboxBackend`]
 ///   so execution proceeds with NO isolation per explicit operator opt-in.
 /// - Otherwise: return [`FailClosedBackend`], which refuses execution.
@@ -152,10 +152,10 @@ fn unsandboxed_fallback() -> Box<dyn backends::SandboxBackend> {
     } else {
         tracing::error!(
             target: "wcore_sandbox",
-            "no real sandbox backend available and WAYLAND_ALLOW_NO_SANDBOX is not \
+            "no real sandbox backend available and APEXROUTER_CLI_ALLOW_NO_SANDBOX is not \
              set — sandbox FAILS CLOSED; model-driven commands will be refused. \
-             Install bubblewrap (Linux), set WAYLAND_SANDBOX=docker, or set \
-             WAYLAND_ALLOW_NO_SANDBOX=1 to run with NO isolation.",
+             Install bubblewrap (Linux), set APEXROUTER_CLI_SANDBOX=docker, or set \
+             APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 to run with NO isolation.",
         );
         Box::new(FailClosedBackend::new())
     }
@@ -252,24 +252,24 @@ impl SandboxRegistry {
 /// used when its `is_available()` holds. There is no unsandboxed default —
 /// when no real backend is available the dispatcher fails closed (see below).
 ///
-/// `WAYLAND_SANDBOX=none` forces the no-op backend, but ONLY when the
-/// operator has also opted in via `WAYLAND_ALLOW_NO_SANDBOX=1`; otherwise it
-/// fails closed (audit M-2). `WAYLAND_SANDBOX=docker` opts in to the Docker
+/// `APEXROUTER_CLI_SANDBOX=none` forces the no-op backend, but ONLY when the
+/// operator has also opted in via `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1`; otherwise it
+/// fails closed (audit M-2). `APEXROUTER_CLI_SANDBOX=docker` opts in to the Docker
 /// backend; when Docker is unreachable it fails closed rather than silently
 /// substituting NoSandbox.
 ///
 /// Whenever no real sandbox backend is available, this routes through
 /// [`unsandboxed_fallback`]: it returns a [`FailClosedBackend`] (refuses
-/// execution) unless `WAYLAND_ALLOW_NO_SANDBOX=1` is set, in which case it
+/// execution) unless `APEXROUTER_CLI_ALLOW_NO_SANDBOX=1` is set, in which case it
 /// returns [`backends::no_sandbox::NoSandboxBackend`] with a rate-limited
 /// warning on every selection.
 pub fn default_for_platform() -> Box<dyn backends::SandboxBackend> {
-    if let Ok(choice) = std::env::var("WAYLAND_SANDBOX") {
+    if let Ok(choice) = std::env::var("APEXROUTER_CLI_SANDBOX") {
         match choice.as_str() {
             "none" => {
                 // Explicit operator request for no sandbox. Honor it only
                 // when the unsandboxed opt-in is ALSO set; otherwise fail
-                // closed so a stray `WAYLAND_SANDBOX=none` cannot silently
+                // closed so a stray `APEXROUTER_CLI_SANDBOX=none` cannot silently
                 // strip isolation (audit M-2).
                 if no_sandbox_opt_in() {
                     backends::no_sandbox::warn_once_sandbox_disabled();
@@ -277,9 +277,9 @@ pub fn default_for_platform() -> Box<dyn backends::SandboxBackend> {
                 }
                 tracing::error!(
                     target: "wcore_sandbox",
-                    "WAYLAND_SANDBOX=none requested but WAYLAND_ALLOW_NO_SANDBOX \
+                    "APEXROUTER_CLI_SANDBOX=none requested but APEXROUTER_CLI_ALLOW_NO_SANDBOX \
                      is not set — refusing to disable the sandbox. Set \
-                     WAYLAND_ALLOW_NO_SANDBOX=1 to run with NO isolation."
+                     APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 to run with NO isolation."
                 );
                 return Box::new(FailClosedBackend::new());
             }
@@ -294,8 +294,8 @@ pub fn default_for_platform() -> Box<dyn backends::SandboxBackend> {
                 // running unsandboxed under the host's full permissions.
                 tracing::error!(
                     target: "wcore_sandbox",
-                    "WAYLAND_SANDBOX=docker but Docker socket not reachable; \
-                     failing closed (set WAYLAND_ALLOW_NO_SANDBOX=1 to run \
+                    "APEXROUTER_CLI_SANDBOX=docker but Docker socket not reachable; \
+                     failing closed (set APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 to run \
                      unsandboxed instead)"
                 );
                 return unsandboxed_fallback();
@@ -337,8 +337,8 @@ mod fail_closed_tests {
     use super::*;
     use backends::SandboxBackend as _;
 
-    /// Serialize the env-mutating tests in this module — `WAYLAND_SANDBOX`
-    /// and `WAYLAND_ALLOW_NO_SANDBOX` are process-global.
+    /// Serialize the env-mutating tests in this module — `APEXROUTER_CLI_SANDBOX`
+    /// and `APEXROUTER_CLI_ALLOW_NO_SANDBOX` are process-global.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     /// RAII guard that snapshots and restores both sandbox env vars so a
@@ -350,7 +350,7 @@ mod fail_closed_tests {
     impl EnvGuard {
         fn capture() -> Self {
             Self {
-                sandbox: std::env::var("WAYLAND_SANDBOX").ok(),
+                sandbox: std::env::var("APEXROUTER_CLI_SANDBOX").ok(),
                 allow: std::env::var(ALLOW_NO_SANDBOX_ENV).ok(),
             }
         }
@@ -359,8 +359,8 @@ mod fail_closed_tests {
             // this binary reads these vars concurrently during the test.
             unsafe {
                 match v {
-                    Some(val) => std::env::set_var("WAYLAND_SANDBOX", val),
-                    None => std::env::remove_var("WAYLAND_SANDBOX"),
+                    Some(val) => std::env::set_var("APEXROUTER_CLI_SANDBOX", val),
+                    None => std::env::remove_var("APEXROUTER_CLI_SANDBOX"),
                 }
             }
         }
@@ -399,7 +399,7 @@ mod fail_closed_tests {
         match err {
             SandboxError::ExecFailed(msg) => {
                 assert!(
-                    msg.contains("WAYLAND_ALLOW_NO_SANDBOX"),
+                    msg.contains("APEXROUTER_CLI_ALLOW_NO_SANDBOX"),
                     "refusal must name the opt-in env: {msg}"
                 );
             }
@@ -416,7 +416,7 @@ mod fail_closed_tests {
         assert_eq!(
             backend.name(),
             "fail_closed",
-            "without WAYLAND_ALLOW_NO_SANDBOX the fallback must fail closed"
+            "without APEXROUTER_CLI_ALLOW_NO_SANDBOX the fallback must fail closed"
         );
     }
 
@@ -429,7 +429,7 @@ mod fail_closed_tests {
         assert_eq!(
             backend.name(),
             "no_sandbox",
-            "WAYLAND_ALLOW_NO_SANDBOX=1 must opt in to NoSandbox"
+            "APEXROUTER_CLI_ALLOW_NO_SANDBOX=1 must opt in to NoSandbox"
         );
     }
 
@@ -439,12 +439,12 @@ mod fail_closed_tests {
         let _g = EnvGuard::capture();
         EnvGuard::set_sandbox(Some("none"));
         EnvGuard::set_allow(None);
-        // A stray WAYLAND_SANDBOX=none must NOT silently strip isolation.
+        // A stray APEXROUTER_CLI_SANDBOX=none must NOT silently strip isolation.
         let backend = default_for_platform();
         assert_eq!(
             backend.name(),
             "fail_closed",
-            "WAYLAND_SANDBOX=none without the opt-in must fail closed"
+            "APEXROUTER_CLI_SANDBOX=none without the opt-in must fail closed"
         );
     }
 
@@ -458,7 +458,7 @@ mod fail_closed_tests {
         assert_eq!(
             backend.name(),
             "no_sandbox",
-            "WAYLAND_SANDBOX=none + opt-in must honor the no-op backend"
+            "APEXROUTER_CLI_SANDBOX=none + opt-in must honor the no-op backend"
         );
     }
 

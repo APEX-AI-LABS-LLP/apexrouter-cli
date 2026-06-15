@@ -139,7 +139,7 @@ pub enum ProtocolEvent {
     },
     /// ForgeFlows-Live: a workflow (ForgeFlows / Dynamic Workflows) run
     /// started. Emitted once, before the first node dispatches, so hosts
-    /// (the TUI Workflows tab and the external `wayland` desktop app) get a
+    /// (the TUI Workflows tab and the external `apexrouter` desktop app) get a
     /// clean lifecycle signal instead of inferring the run from the first
     /// `workflow:<node_id>`-prefixed `SubAgentEvent`. `workflow_id` is a
     /// stable correlation handle for the run; `name` is the author's display
@@ -337,7 +337,7 @@ pub enum ProtocolEvent {
     /// completed browser op (Navigate, Snapshot, Click, ...) so the host
     /// can render a compact tool-call trail. Gated by the W0-reserved
     /// `capabilities.browser_suite` flag — engine advertises the flag
-    /// when the wayland-browser plugin is loaded. Hosts that don't
+    /// when the apexrouter-browser plugin is loaded. Hosts that don't
     /// recognise `browser_event` MUST drop it silently per the W0 host
     /// decoder contract.
     BrowserEvent {
@@ -367,7 +367,7 @@ pub enum ProtocolEvent {
     /// completed CUA op (LeftClick, Type, Screenshot, ...) so the host
     /// can render a compact action trail. Gated by the W0-reserved
     /// `capabilities.computer_use` flag — engine advertises the flag
-    /// when the wayland-cua plugin is loaded. Hosts that don't
+    /// when the apexrouter-cua plugin is loaded. Hosts that don't
     /// recognise `cua_event` MUST drop it silently per the W0 host
     /// decoder contract.
     CuaEvent {

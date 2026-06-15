@@ -1,6 +1,6 @@
 [package]
 name = "wcore-replay"
-description = "Trace + replay + diff for wayland-core session debugging (M5.2)"
+description = "Trace + replay + diff for apexrouter-cli session debugging (M5.2)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

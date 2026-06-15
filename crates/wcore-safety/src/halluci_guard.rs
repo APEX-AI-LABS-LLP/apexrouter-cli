@@ -1,7 +1,7 @@
 //! Hallucination guard for assistant outputs.
 //!
-//! Wayland v0.6.2 Tier-2 lift **T2-A1**. Ports the deterministic claim
-//! extractor + cross-ref shape from `wayland-hermes/agent/agent/hallucination_guard.py`
+//! ApexRouter v0.6.2 Tier-2 lift **T2-A1**. Ports the deterministic claim
+//! extractor + cross-ref shape from `apexrouter-hermes/agent/agent/hallucination_guard.py`
 //! and generalises it from "delegation claims vs. Kanban DB" to
 //! "factual claims vs. `ToolCallTrace::result_snippet`" (T2-A0).
 //!

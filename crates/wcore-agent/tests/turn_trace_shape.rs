@@ -25,7 +25,7 @@ fn turn_trace_provider_field_is_structured_not_family_anthropic() {
         cost_usd: 0.0,
         tool_calls: vec![],
         hook_actions: vec![],
-        source_product: "wayland-core".into(),
+        source_product: "apexrouter-cli".into(),
     };
     assert_eq!(trace.provider, "anthropic");
     assert_ne!(

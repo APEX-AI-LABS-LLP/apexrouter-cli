@@ -1,47 +1,47 @@
-# Wayland-Core Cron Daemon — systemd user unit (Linux)
+# ApexRouter-CLI Cron Daemon — systemd user unit (Linux)
 #
 # Installation:
-#   1. Copy this file to ~/.config/systemd/user/wayland-cron-daemon.service
-#   2. Edit ExecStart below to point to the wayland-core binary.
-#   3. Optionally override WAYLAND_HOME if it differs from ~/.wayland.
+#   1. Copy this file to ~/.config/systemd/user/apexrouter-cron-daemon.service
+#   2. Edit ExecStart below to point to the apexrouter-cli binary.
+#   3. Optionally override APEXROUTER_CLI_HOME if it differs from ~/.apexrouter.
 #   4. Enable + start:
 #        systemctl --user daemon-reload
-#        systemctl --user enable --now wayland-cron-daemon.service
+#        systemctl --user enable --now apexrouter-cron-daemon.service
 #   5. Verify:
-#        systemctl --user status wayland-cron-daemon.service
+#        systemctl --user status apexrouter-cron-daemon.service
 #
 # Uninstall:
-#   systemctl --user disable --now wayland-cron-daemon.service
-#   rm ~/.config/systemd/user/wayland-cron-daemon.service
+#   systemctl --user disable --now apexrouter-cron-daemon.service
+#   rm ~/.config/systemd/user/apexrouter-cron-daemon.service
 #   systemctl --user daemon-reload
 #
 # Logs:
-#   journalctl --user -u wayland-cron-daemon.service -f
+#   journalctl --user -u apexrouter-cron-daemon.service -f
 #   # or from the log file:
-#   tail -f ~/.wayland/cron-daemon.log
+#   tail -f ~/.apexrouter/cron-daemon.log
 
 [Unit]
-Description=Wayland-Core Cron Daemon
-Documentation=https://github.com/FerroxLabs/wayland-core
+Description=ApexRouter-CLI Cron Daemon
+Documentation=https://github.com/APEX-AI-LABS-LLP/apexrouter-cli
 After=network.target
 
 [Service]
 Type=simple
 
-# Replace with the absolute path to the wayland-core binary.
-# Example: ExecStart=/usr/local/bin/wayland-core cron daemon
-ExecStart=/usr/local/bin/wayland-core cron daemon
+# Replace with the absolute path to the apexrouter-cli binary.
+# Example: ExecStart=/usr/local/bin/apexrouter-cli cron daemon
+ExecStart=/usr/local/bin/apexrouter-cli cron daemon
 
 # Run the daemon body directly (systemd is the process manager).
-Environment=WAYLAND_CRON_DAEMON_CHILD=1
+Environment=APEXROUTER_CLI_CRON_DAEMON_CHILD=1
 
-# Override if your Wayland home is not ~/.wayland.
-# Environment=WAYLAND_HOME=/home/youruser/.wayland
+# Override if your ApexRouter home is not ~/.apexrouter.
+# Environment=APEXROUTER_CLI_HOME=/home/youruser/.apexrouter
 
 # Redirect logs to the daemon log file. systemd also captures
 # stdout/stderr via journald by default.
-StandardOutput=append:%h/.wayland/cron-daemon.log
-StandardError=append:%h/.wayland/cron-daemon.log
+StandardOutput=append:%h/.apexrouter/cron-daemon.log
+StandardError=append:%h/.apexrouter/cron-daemon.log
 
 # Restart on unexpected exit. Do not restart on SIGTERM (clean shutdown).
 Restart=on-failure

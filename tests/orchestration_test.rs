@@ -1,9 +1,9 @@
 mod common;
 
-use wayland-core::hooks::{HookDef, HookEngine, HooksConfig};
-use wayland-core::tools::orchestration::execute_tool_calls;
-use wayland-core::tools::registry::ToolRegistry;
-use wayland-core::types::message::ContentBlock;
+use apexrouter-cli::hooks::{HookDef, HookEngine, HooksConfig};
+use apexrouter-cli::tools::orchestration::execute_tool_calls;
+use apexrouter-cli::tools::registry::ToolRegistry;
+use apexrouter-cli::types::message::ContentBlock;
 use common::{auto_approve_confirmer, MockTool};
 use serde_json::json;
 

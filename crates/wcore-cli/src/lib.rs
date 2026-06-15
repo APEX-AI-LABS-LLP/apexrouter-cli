@@ -29,8 +29,8 @@ pub mod agent_cmd;
 // the binary crate.
 pub mod crash_sentinel;
 
-// v0.7.0 Task 1.B.2: `wayland-core init` scaffolds `.wayland/config.toml`
-// + a `WAYLAND.md` template in the current project. Non-interactive;
+// v0.7.0 Task 1.B.2: `apexrouter-cli init` scaffolds `.apexrouter/config.toml`
+// + a `APEXROUTER.md` template in the current project. Non-interactive;
 // idempotent unless `--force` is set.
 pub mod init;
 
@@ -59,7 +59,7 @@ pub mod swarm;
 // Dynamic Workflows B2: `workflow` subcommand (validate / list / run)
 // wrapping the public `wcore_agent::orchestration::workflow` API. Module
 // lives in the lib so the file-discovery + validate logic is unit-testable
-// against tempdir-backed `.wayland/workflows/` trees without a provider.
+// against tempdir-backed `.apexrouter/workflows/` trees without a provider.
 pub mod workflow;
 
 // v0.8.1 U7: `cron` subcommand wiring `wcore-cron` into the user-facing
@@ -68,14 +68,14 @@ pub mod workflow;
 // unit-testable against a tempdir-backed `FileCronStore` without
 // touching the user's home dir.
 pub mod cron;
-// v0.8.1 U9: `wayland-core self-update` — pulls the latest signed
+// v0.8.1 U9: `apexrouter-cli self-update` — pulls the latest signed
 // release artifact from GitHub Releases, verifies the .sig against the
 // pinned marketplace pubkey, and atomically swaps the running binary.
 // Module lives in the lib so the ed25519 verify + mockito-backed
 // release-fetch round-trip run under `cargo test -p wcore-cli --lib`.
 pub mod self_update;
 
-// The `wayland-core --doctor` system-dependency probe. Lives in the lib
+// The `apexrouter-cli --doctor` system-dependency probe. Lives in the lib
 // (not the binary) so the TUI diagnostics surface can call
 // `doctor::collect()` for its `/doctor` screen; `main.rs` calls
 // `doctor::run()` through the lib for the `--doctor` CLI flag.
@@ -92,7 +92,7 @@ pub mod tui;
 // per-provider validation endpoints).
 pub mod provider_keys;
 
-// CLI surface: `wayland-core auth` — add / list / remove provider API
+// CLI surface: `apexrouter-cli auth` — add / list / remove provider API
 // keys directly in the global `config.toml` without the full onboarding
 // flow. Lives in the lib so the TOML CRUD is unit-testable against a
 // tempdir-backed config path.

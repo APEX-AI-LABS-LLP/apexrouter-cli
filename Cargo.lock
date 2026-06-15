@@ -176,6 +176,101 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "apexrouter-browser"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wcore-plugin-api",
+ "wcore-protocol",
+ "wcore-types",
+ "workspace-hack",
+]
+
+[[package]]
+name = "apexrouter-cua"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wcore-plugin-api",
+ "wcore-protocol",
+ "wcore-types",
+ "workspace-hack",
+]
+
+[[package]]
+name = "apexrouter-honcho"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "inventory",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "wcore-egress",
+ "wcore-plugin-api",
+ "wcore-protocol",
+ "wcore-types",
+ "wiremock",
+ "workspace-hack",
+]
+
+[[package]]
+name = "apexrouter-ijfw"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "inventory",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wcore-plugin-api",
+ "wcore-protocol",
+ "wcore-types",
+ "workspace-hack",
+]
+
+[[package]]
+name = "apexrouter-ollama"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "inventory",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wcore-egress",
+ "wcore-plugin-api",
+ "wcore-providers",
+ "wcore-types",
+ "wiremock",
+ "workspace-hack",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8933,101 +9028,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wayland-browser"
-version = "0.11.0"
-dependencies = [
- "async-trait",
- "inventory",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wcore-plugin-api",
- "wcore-protocol",
- "wcore-types",
- "workspace-hack",
-]
-
-[[package]]
-name = "wayland-cua"
-version = "0.11.0"
-dependencies = [
- "async-trait",
- "inventory",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wcore-plugin-api",
- "wcore-protocol",
- "wcore-types",
- "workspace-hack",
-]
-
-[[package]]
-name = "wayland-honcho"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "inventory",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "wcore-egress",
- "wcore-plugin-api",
- "wcore-protocol",
- "wcore-types",
- "wiremock",
- "workspace-hack",
-]
-
-[[package]]
-name = "wayland-ijfw"
-version = "0.11.0"
-dependencies = [
- "async-trait",
- "chrono",
- "inventory",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wcore-plugin-api",
- "wcore-protocol",
- "wcore-types",
- "workspace-hack",
-]
-
-[[package]]
-name = "wayland-ollama"
-version = "0.11.0"
-dependencies = [
- "async-trait",
- "futures",
- "inventory",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wcore-egress",
- "wcore-plugin-api",
- "wcore-providers",
- "wcore-types",
- "wiremock",
- "workspace-hack",
-]
-
-[[package]]
 name = "wcore-acp"
 version = "0.11.0"
 dependencies = [
@@ -9055,6 +9055,9 @@ name = "wcore-agent"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "apexrouter-honcho",
+ "apexrouter-ijfw",
+ "apexrouter-ollama",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -9101,9 +9104,6 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "wayland-honcho",
- "wayland-ijfw",
- "wayland-ollama",
  "wcore-agent",
  "wcore-agents-pack",
  "wcore-browser",
@@ -9440,6 +9440,10 @@ name = "wcore-cli"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "apexrouter-browser",
+ "apexrouter-cua",
+ "apexrouter-honcho",
+ "apexrouter-ollama",
  "async-trait",
  "axum",
  "clap",
@@ -9482,10 +9486,6 @@ dependencies = [
  "url",
  "uuid",
  "vt100",
- "wayland-browser",
- "wayland-cua",
- "wayland-honcho",
- "wayland-ollama",
  "wcore-acp",
  "wcore-agent",
  "wcore-agents-pack",
@@ -9719,13 +9719,13 @@ dependencies = [
 name = "wcore-honcho-adapter"
 version = "0.11.0"
 dependencies = [
+ "apexrouter-honcho",
  "async-trait",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "wayland-honcho",
  "wcore-user-model",
  "workspace-hack",
 ]

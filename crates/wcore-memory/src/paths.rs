@@ -16,12 +16,8 @@ pub const ENTRYPOINT_NAME: &str = "MEMORY.md";
 /// Maximum length for sanitized directory names before truncation.
 const MAX_SANITIZED_LENGTH: usize = 200;
 
-/// Primary environment variable to override the memory base directory.
+/// Environment variable to override the memory base directory.
 const MEMORY_DIR_ENV: &str = "WCORE_MEMORY_DIR";
-
-/// Legacy alias retained for backward compatibility. Used only when the
-/// primary `WCORE_MEMORY_DIR` is unset or empty.
-const MEMORY_DIR_ENV_LEGACY: &str = "AIONRS_MEMORY_DIR";
 
 // ---------------------------------------------------------------------------
 // Base directory resolution
@@ -30,19 +26,16 @@ const MEMORY_DIR_ENV_LEGACY: &str = "AIONRS_MEMORY_DIR";
 /// Returns the base directory for memory storage.
 ///
 /// Resolution order:
-///   1. `WCORE_MEMORY_DIR` environment variable (primary override)
-///   2. `AIONRS_MEMORY_DIR` environment variable (legacy alias, backward compat)
-///   3. `app_config_dir()` from `wcore-config` (platform-aware default)
+///   1. `WCORE_MEMORY_DIR` environment variable (override)
+///   2. `app_config_dir()` from `wcore-config` (platform-aware default)
 ///
-/// Returns `None` only when both env vars are unset AND the platform
+/// Returns `None` only when the env var is unset AND the platform
 /// cannot determine a config directory (e.g. no home directory).
 pub fn memory_base_dir() -> Option<PathBuf> {
-    for key in [MEMORY_DIR_ENV, MEMORY_DIR_ENV_LEGACY] {
-        if let Ok(dir) = std::env::var(key)
-            && !dir.is_empty()
-        {
-            return Some(PathBuf::from(dir));
-        }
+    if let Ok(dir) = std::env::var(MEMORY_DIR_ENV)
+        && !dir.is_empty()
+    {
+        return Some(PathBuf::from(dir));
     }
     wcore_config::config::app_config_dir()
 }
@@ -95,10 +88,10 @@ pub fn session_db_path(session_id: &str) -> Option<PathBuf> {
 }
 
 /// Returns the project memory DB path under the project root:
-/// `<project_root>/.wayland-core/memory/memory.db`.
+/// `<project_root>/.apexrouter-cli/memory/memory.db`.
 pub fn project_db_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".wayland-core")
+        .join(".apexrouter-cli")
         .join("memory")
         .join("memory.db")
 }

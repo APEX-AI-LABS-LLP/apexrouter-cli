@@ -105,7 +105,7 @@ impl FileWatcher {
                         // F-007 (CRIT): hard-exclude wcore's own state
                         // directories from the "user edited files" signal.
                         // Session JSON, cron store, plans, and config files
-                        // live under `.wayland-core/` and `.wayland/`; without
+                        // live under `.apexrouter-cli/` and `.apexrouter/`; without
                         // this filter every session save injects a synthetic
                         // "User edited N files" message that poisons the
                         // model's context and wastes 200-400 tokens per turn.
@@ -243,7 +243,7 @@ impl FileWatcher {
 }
 
 /// F-007 (CRIT): return `true` when a path is inside wcore's own internal
-/// state directories (`.wayland-core/` or `.wayland/`). These directories
+/// state directories (`.apexrouter-cli/` or `.apexrouter/`). These directories
 /// hold session JSON, cron store, config, and plan files that the engine
 /// writes constantly during normal operation. Surfacing them as "user edited"
 /// events injects false context and wastes tokens every turn.
@@ -255,7 +255,7 @@ impl FileWatcher {
 fn is_wcore_internal_path(path: &Path) -> bool {
     path.components().any(|c| {
         let s = c.as_os_str().to_string_lossy();
-        s == ".wayland-core" || s == ".wayland"
+        s == ".apexrouter-cli" || s == ".apexrouter"
     })
 }
 
@@ -306,16 +306,16 @@ fn is_rustfmt_scratch(name: &str) -> bool {
 /// * SQLite sidecars (`*.wal`, `*.shm`, `*-wal`, `*-shm`) + lock files
 ///   (`*.lock`, `index.lock`) — engine state, never hand-edited (B#2(b))
 ///
-/// `.wayland-core/` and `.wayland/` are already filtered at the
+/// `.apexrouter-cli/` and `.apexrouter/` are already filtered at the
 /// notify-callback level (`is_wcore_internal_path` above) so we
 /// don't repeat that check here. The `sessions/` + sidecar drops handle
 /// the case where the engine's session dir resolves under the watch root
-/// (a custom or test `WAYLAND_HOME` that isn't named `.wayland-core`), so
+/// (a custom or test `APEXROUTER_CLI_HOME` that isn't named `.apexrouter-cli`), so
 /// `save_session()`'s constant `*.wal`/`*.json`/`index.lock` writes don't
 /// surface as phantom "the user edited N files" events.
 fn path_should_surface_as_edit(path: &Path) -> bool {
     // Component-wise filter for directory-style excludes. `sessions`
-    // covers the engine's per-session store ($WAYLAND_HOME/sessions/…)
+    // covers the engine's per-session store ($APEXROUTER_CLI_HOME/sessions/…)
     // when it falls under the watch root.
     for comp in path.components() {
         let s = comp.as_os_str().to_string_lossy();
@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn external_edit_message_filters_engine_session_state_bug2b() {
         // Bug #2(b): when the engine's session dir resolves under the watch
-        // root (a custom/test WAYLAND_HOME not named `.wayland-core`), every
+        // root (a custom/test APEXROUTER_CLI_HOME not named `.apexrouter-cli`), every
         // session save writes `sessions/*.wal|*.json|index.lock`. None of those
         // are user edits — only the real source edit may surface.
         let events = vec![
@@ -619,7 +619,7 @@ mod tests {
             ev("/home/sessions/2026-06-05_abc.db-wal"),
             ev("/home/memory/memory.db-wal"),
             ev("/home/memory/memory.db-shm"),
-            ev("/proj/.wayland-core/index.lock"),
+            ev("/proj/.apexrouter-cli/index.lock"),
             ev("/proj/some/dir/foo.lock"),
             ev("/proj/data.wal"),
             ev("/proj/cache.shm"),

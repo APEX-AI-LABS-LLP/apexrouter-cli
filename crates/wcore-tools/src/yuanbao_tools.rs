@@ -1,12 +1,12 @@
 //! T3-3.7 — `yuanbao_tools`: Tencent Yuanbao platform toolset.
 //!
-//! Ported from `wayland-hermes/agent/tools/yuanbao_tools.py` (MIT
+//! Ported from `apexrouter-hermes/agent/tools/yuanbao_tools.py` (MIT
 //! © Nous Research). The Python original registers five separate
 //! tools — `yb_query_group_info`, `yb_query_group_members`,
 //! `yb_search_sticker`, `yb_send_sticker`, `yb_send_dm` — against a
 //! gateway-side Yuanbao adapter (`gateway.platforms.yuanbao`).
 //!
-//! Wayland's engine has no Yuanbao adapter and no built-in sticker
+//! ApexRouter's engine has no Yuanbao adapter and no built-in sticker
 //! catalogue. This port mirrors the **dispatch surface** of all five
 //! operations behind a single `YuanbaoTool` with an `action` discriminator
 //! and routes them through a pluggable `YuanbaoBackend` trait that the
@@ -22,7 +22,7 @@
 //!     `YuanbaoTool` with an `action` field. Schema parity holds:
 //!     every required parameter the Python tools declared is required
 //!     here for the matching action.
-//!   * No `WAYLAND_SESSION_CHAT_ID` / `WAYLAND_SESSION_PLATFORM`
+//!   * No `APEXROUTER_CLI_SESSION_CHAT_ID` / `APEXROUTER_CLI_SESSION_PLATFORM`
 //!     fallback — the engine has no session-env shim. Hosts that need
 //!     it pass `chat_id` explicitly via the tool input.
 //!   * Sticker catalogue lookup (`yuanbao_sticker.search_stickers` /
@@ -520,7 +520,7 @@ impl YuanbaoAction {
 // YuanbaoTool
 // ---------------------------------------------------------------------------
 
-/// `yuanbao` tool — Wayland engine port of the five hermes
+/// `yuanbao` tool — ApexRouter engine port of the five hermes
 /// `yb_*` tools collapsed under a single `action` discriminator.
 pub struct YuanbaoTool {
     backend: Arc<dyn YuanbaoBackend>,

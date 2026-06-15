@@ -70,7 +70,7 @@ impl MatrixChannel {
         api_base: String,
     ) -> Self {
         let http = wcore_egress::EgressClient::builder()
-            .user_agent(concat!("wayland-core/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("apexrouter-cli/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_default();
 

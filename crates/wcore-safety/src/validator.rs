@@ -140,7 +140,7 @@ impl OutputValidator {
 }
 
 // ---------------------------------------------------------------------------
-// LLM-judge validator (T2-A2 port of wayland-hermes output_validator.py)
+// LLM-judge validator (T2-A2 port of apexrouter-hermes output_validator.py)
 //
 // Adds an LLM-as-judge layer over the existing regex/PII checks: scores an
 // output against a configurable set of criteria, charges spend against a

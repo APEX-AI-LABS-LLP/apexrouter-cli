@@ -1,9 +1,9 @@
 //! T3-3.5 — `vision_analyze` AI vision tool.
 //!
-//! Ported from `wayland-hermes/agent/tools/vision_tools.py` (MIT).
+//! Ported from `apexrouter-hermes/agent/tools/vision_tools.py` (MIT).
 //! The Python original routes image URLs (or local paths) through a
 //! centralized auxiliary LLM router that supports OpenRouter, Codex,
-//! native Anthropic, or any OpenAI-compatible endpoint. Wayland's
+//! native Anthropic, or any OpenAI-compatible endpoint. ApexRouter's
 //! engine deliberately has **no embedded multimodal provider** — each
 //! provider's vision support lives behind the `LlmProvider` trait and
 //! is wired by the host. To honor the NO-STUBS contract of T3, this
@@ -267,7 +267,7 @@ impl VisionBackend for CapturingVisionBackend {
     }
 }
 
-/// `vision_analyze` tool — Wayland engine port of `vision_tools.py`.
+/// `vision_analyze` tool — ApexRouter engine port of `vision_tools.py`.
 ///
 /// Construct via [`VisionAnalyzeTool::new`] passing a `VisionBackend`
 /// (required — host-wired multimodal LLM) and an `ImageFetcher`

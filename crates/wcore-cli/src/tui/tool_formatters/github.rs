@@ -60,12 +60,12 @@ mod tests {
         let f = GithubFormatter;
         let payload = json!({
             "action": "Created",
-            "repo": "FerroxLabs/wayland-core",
+            "repo": "APEX-AI-LABS-LLP/apexrouter-cli",
             "id": 42,
-            "html_url": "https://github.com/FerroxLabs/wayland-core/issues/42",
+            "html_url": "https://github.com/APEX-AI-LABS-LLP/apexrouter-cli/issues/42",
         });
         let s = f.summary_line(&payload, Duration::from_secs(1));
-        assert_eq!(s, "Created FerroxLabs/wayland-core #42");
+        assert_eq!(s, "Created APEX-AI-LABS-LLP/apexrouter-cli #42");
     }
 
     #[test]

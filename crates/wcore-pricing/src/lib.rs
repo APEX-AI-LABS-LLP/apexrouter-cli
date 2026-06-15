@@ -3,7 +3,7 @@
 //! Loads a TOML catalog of provider × model × input/output token rates
 //! (USD per million tokens) and exposes a microcent-integer cost API.
 //! Default catalog is bundled at compile time. Override via
-//! WAYLAND_PRICING_PATH env var.
+//! APEXROUTER_CLI_PRICING_PATH env var.
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ pub struct PricingCatalog {
 
 impl PricingCatalog {
     pub fn load_default() -> Result<Self, PricingError> {
-        if let Ok(path) = std::env::var("WAYLAND_PRICING_PATH") {
+        if let Ok(path) = std::env::var("APEXROUTER_CLI_PRICING_PATH") {
             let raw = std::fs::read_to_string(&path)?;
             return Ok(toml::from_str(&raw)?);
         }

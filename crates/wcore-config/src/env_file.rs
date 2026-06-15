@@ -1,6 +1,6 @@
 //! Atomic `.env` writer with strict key/value validation.
 //!
-//! v0.9.0 W4 E1 / S-H3 BLOCKER closure: writes to `~/.wayland/.env` (or
+//! v0.9.0 W4 E1 / S-H3 BLOCKER closure: writes to `~/.apexrouter/.env` (or
 //! any other `.env`-shaped file) must be safe under three concurrent
 //! pressures:
 //!
@@ -11,7 +11,7 @@
 //! 2. **Partial writes.** A crash mid-write must not leave the file
 //!    truncated or corrupt. We stage to a sibling tempfile and `rename`
 //!    over the target — POSIX atomicity guarantee.
-//! 3. **Permissions leakage.** The parent dir (`~/.wayland/`) is forced
+//! 3. **Permissions leakage.** The parent dir (`~/.apexrouter/`) is forced
 //!    to mode `0700` on Unix; the file itself to `0600`. The OAuth
 //!    storage layer uses the same posture (see `wcore_agent::oauth::storage`)
 //!    so the on-disk credential surface is uniformly tight.
@@ -204,7 +204,7 @@ fn parse_env(body: &str) -> BTreeMap<String, String> {
 /// is wrapped in double-quotes so the parser can recover it.
 fn serialise_env(entries: &BTreeMap<String, String>) -> String {
     let mut out = String::new();
-    out.push_str("# Wayland credentials store — managed by the Config TUI.\n");
+    out.push_str("# ApexRouter credentials store — managed by the Config TUI.\n");
     out.push_str("# Do not edit values that contain newlines; one entry per line only.\n");
     for (k, v) in entries {
         out.push_str(k);

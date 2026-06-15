@@ -1,4 +1,4 @@
-//! Convenience facade over the `keyring` crate for Phase 1.B.2 (`wayland
+//! Convenience facade over the `keyring` crate for Phase 1.B.2 (`apexrouter
 //! init`) and Phase 2.A (channel adapters).
 //!
 //! Thin wrapper that does not duplicate
@@ -11,9 +11,9 @@
 use thiserror::Error;
 
 /// Service-name prefix applied to every keychain entry written by this
-/// facade. Keeps Wayland secrets namespaced inside the OS keychain so
+/// facade. Keeps ApexRouter secrets namespaced inside the OS keychain so
 /// users can audit (and revoke) them as a group.
-pub const SERVICE_PREFIX: &str = "wayland-core";
+pub const SERVICE_PREFIX: &str = "apexrouter-cli";
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -79,8 +79,8 @@ mod tests {
 
     #[test]
     fn service_name_prefixed() {
-        assert_eq!(service_name("acp"), "wayland-core.acp");
-        assert_eq!(service_name(""), "wayland-core.");
+        assert_eq!(service_name("acp"), "apexrouter-cli.acp");
+        assert_eq!(service_name(""), "apexrouter-cli.");
     }
 
     #[cfg(target_os = "macos")]

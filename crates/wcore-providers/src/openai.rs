@@ -445,7 +445,7 @@ fn strip_patterns_from_text(text: &str, compat: &ProviderCompat) -> String {
 /// guarantee the three fields the JSON-Schema function-calling contract wants:
 /// `type: "object"`, a `properties` object, and a `required` array. Existing
 /// fields (real `properties`, `additionalProperties`, etc.) are preserved.
-/// See FerroxLabs/wayland#24.
+/// See APEX-AI-LABS-LLP/apexrouter#24.
 fn normalize_tool_parameters(schema: &Value) -> Value {
     let mut obj = match schema {
         Value::Object(map) => map.clone(),

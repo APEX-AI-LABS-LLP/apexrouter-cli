@@ -1,9 +1,9 @@
 //! T3-3.1.4 — `send_message` cross-channel messaging tool.
 //!
-//! Ported from `wayland-hermes/agent/tools/send_message_tool.py` (MIT
+//! Ported from `apexrouter-hermes/agent/tools/send_message_tool.py` (MIT
 //! © Nous Research). The Python original routes to ~17 external
 //! messaging platforms (Telegram, Discord, Slack, Matrix, Signal,
-//! Email, SMS, etc.). Wayland's engine has no adapters for any of
+//! Email, SMS, etc.). ApexRouter's engine has no adapters for any of
 //! those, so this port covers the **dispatch surface** only — schema,
 //! target parsing, platform name validation, and a pluggable
 //! `MessageTransport` boundary that a host (CLI / Electron / gateway
@@ -249,7 +249,7 @@ impl MessageTransport for CapturingMessageTransport {
     }
 }
 
-/// `send_message` tool — Wayland engine port of `send_message_tool.py`.
+/// `send_message` tool — ApexRouter engine port of `send_message_tool.py`.
 pub struct SendMessageTool {
     transport: Arc<dyn MessageTransport>,
 }

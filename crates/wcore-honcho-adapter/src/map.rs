@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use wayland_honcho::{DialecticInference as HonchoInference, UserProfile};
+use apexrouter_honcho::{DialecticInference as HonchoInference, UserProfile};
 use wcore_user_model::brief::{DialecticInference, UserBrief, UserStyle};
 use wcore_user_model::observation::{Observation, Outcome};
 use wcore_user_model::preferences::{ExpertiseLevel, Preferences};
@@ -18,14 +18,14 @@ use wcore_user_model::preferences::{ExpertiseLevel, Preferences};
 /// are mapped onto typed UserBrief / Preferences fields; anything else
 /// in `UserProfile::preferences` lands in `Preferences::tags` so it
 /// survives a round-trip.
-const KEY_NAME: &str = "wayland.name";
-const KEY_SUMMARY: &str = "wayland.summary";
-const KEY_LAST_OBSERVED_TS: &str = "wayland.last_observed_ts";
-const KEY_STYLE_FORMALITY: &str = "wayland.style.formality";
-const KEY_STYLE_ENERGY: &str = "wayland.style.energy";
-const KEY_STYLE_TERSENESS: &str = "wayland.style.terseness";
-const KEY_STYLE_EMOJI_USE: &str = "wayland.style.emoji_use";
-const EXPERTISE_PREFIX: &str = "wayland.expertise.";
+const KEY_NAME: &str = "apexrouter.name";
+const KEY_SUMMARY: &str = "apexrouter.summary";
+const KEY_LAST_OBSERVED_TS: &str = "apexrouter.last_observed_ts";
+const KEY_STYLE_FORMALITY: &str = "apexrouter.style.formality";
+const KEY_STYLE_ENERGY: &str = "apexrouter.style.energy";
+const KEY_STYLE_TERSENESS: &str = "apexrouter.style.terseness";
+const KEY_STYLE_EMOJI_USE: &str = "apexrouter.style.emoji_use";
+const EXPERTISE_PREFIX: &str = "apexrouter.expertise.";
 
 /// Honcho `UserProfile` → engine `UserBrief`. Unknown keys are ignored
 /// here (they flow through `profile_to_preferences`).
@@ -121,7 +121,7 @@ pub fn observation_to_writes(obs: &Observation) -> Vec<(String, String)> {
 
 /// v0.8.1 U3 — translate one Honcho dialectic inference into the
 /// engine's `wcore-user-model` shape. The two structs are kept in lock-step
-/// in source even though the F2 invariant forbids `wayland-honcho` from
+/// in source even though the F2 invariant forbids `apexrouter-honcho` from
 /// depending on `wcore-user-model`; this is the seam.
 pub fn honcho_inf_to_user_model(inf: HonchoInference) -> DialecticInference {
     DialecticInference {
@@ -200,8 +200,8 @@ mod tests {
     #[test]
     fn preferences_split_expertise_and_tags() {
         let p = profile_with(&[
-            ("wayland.expertise.rust", "expert"),
-            ("wayland.expertise.react", "intermediate"),
+            ("apexrouter.expertise.rust", "expert"),
+            ("apexrouter.expertise.react", "intermediate"),
             ("rust.last_outcome", "accepted"),
             (KEY_NAME, "Alice"), // brief key — should NOT appear in tags
         ]);

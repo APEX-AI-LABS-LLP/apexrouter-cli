@@ -1,13 +1,13 @@
 <div align="center">
 
-![Wayland Core — Forged to run. Hardened to last. Built to evolve.](docs/img/hero.png)
+![ApexRouter CLI — Forged to run. Hardened to last. Built to evolve.](docs/img/hero.png)
 
 ### The open-source Rust engine for autonomous LLM agents.
 
 **Terminal-first. Multi-provider. MCP-native. Embeddable. Apache-2.0.**
 
-[![npm](https://img.shields.io/npm/v/@ferroxlabs/wayland-core?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=e85d2a)](https://www.npmjs.com/package/@ferroxlabs/wayland-core)
-[![CI](https://img.shields.io/github/actions/workflow/status/FerroxLabs/wayland-core/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI&branch=main)](https://github.com/FerroxLabs/wayland-core/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@APEX-AI-LABS-LLP/apexrouter-cli?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=e85d2a)](https://www.npmjs.com/package/@APEX-AI-LABS-LLP/apexrouter-cli)
+[![CI](https://img.shields.io/github/actions/workflow/status/APEX-AI-LABS-LLP/apexrouter-cli/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI&branch=main)](https://github.com/APEX-AI-LABS-LLP/apexrouter-cli/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-3b3b3b?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/built_with-Rust-dea584?style=for-the-badge&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![platforms](https://img.shields.io/badge/macOS_·_Linux_·_Windows-2b2b2b?style=for-the-badge)](#install)
@@ -19,21 +19,21 @@
 
 ---
 
-Wayland Core is a domain-agnostic autonomous-agent engine written in Rust. It connects to any major LLM provider, invokes real local tools inside an OS-native sandbox, fans out parallel agent swarms, speaks [MCP](https://modelcontextprotocol.io/) in both directions, and drives a task end to end. It runs three ways from one binary: a one-shot command, a full-screen interactive TUI, or a headless engine embedded behind your own app.
+ApexRouter CLI is a domain-agnostic autonomous-agent engine written in Rust. It connects to any major LLM provider, invokes real local tools inside an OS-native sandbox, fans out parallel agent swarms, speaks [MCP](https://modelcontextprotocol.io/) in both directions, and drives a task end to end. It runs three ways from one binary: a one-shot command, a full-screen interactive TUI, or a headless engine embedded behind your own app.
 
-> **Wayland Core** is the engine, on its own, open (this repo, Apache-2.0). **[Wayland Desktop](https://getwayland.com)** is the GUI product built on it. Core is the engine; Desktop is one application that embeds it.
+> **ApexRouter CLI** is the engine, on its own, open (this repo, Apache-2.0). **[ApexRouter Desktop](https://apexrouter.io)** is the GUI product built on it. Core is the engine; Desktop is one application that embeds it.
 
 ## The 30-second proof
 
 ```bash
-npx @ferroxlabs/wayland-core "read Cargo.toml, list the workspace crates, and explain the dependency layering"
+npx @APEX-AI-LABS-LLP/apexrouter-cli "read Cargo.toml, list the workspace crates, and explain the dependency layering"
 ```
 
-One command. The agent reads the file, runs `grep`/`glob` across the tree, reasons, and answers, with every tool call gated and streamed. Or run `wayland-core` with no arguments and it detects your provider keys and drops you into the TUI:
+One command. The agent reads the file, runs `grep`/`glob` across the tree, reasons, and answers, with every tool call gated and streamed. Or run `apexrouter-cli` with no arguments and it detects your provider keys and drops you into the TUI:
 
 <div align="center">
 
-![Wayland Core — connect a provider](docs/img/screenshot-onboarding.png)
+![ApexRouter CLI — connect a provider](docs/img/screenshot-onboarding.png)
 
 </div>
 
@@ -41,7 +41,7 @@ One command. The agent reads the file, runs `grep`/`glob` across the tree, reaso
 
 - **A standalone engine.** The engine is the product, not a feature bolted onto an editor and not a wrapper around one vendor's API.
 - **Terminal-first.** A one-shot command, an interactive TUI, or a headless stream. The terminal is the primary home, not an afterthought.
-- **Embeddable.** Drive it from your own app over a typed JSON-Lines protocol. It is exactly how Wayland Desktop uses it.
+- **Embeddable.** Drive it from your own app over a typed JSON-Lines protocol. It is exactly how ApexRouter Desktop uses it.
 - **Apache-2.0.** Permissive. Build on it commercially without an AGPL obligation.
 
 ## Install
@@ -49,45 +49,45 @@ One command. The agent reads the file, runs `grep`/`glob` across the tree, reaso
 **npm** (recommended, pulls the right prebuilt binary for your platform):
 
 ```bash
-npm install -g @ferroxlabs/wayland-core
-wayland-core --version
+npm install -g @APEX-AI-LABS-LLP/apexrouter-cli
+apexrouter-cli --version
 ```
 
 ```bash
 # or run it once, no install
-npx @ferroxlabs/wayland-core "summarize the TODOs in this repo and draft a triage plan"
+npx @APEX-AI-LABS-LLP/apexrouter-cli "summarize the TODOs in this repo and draft a triage plan"
 ```
 
-**Prebuilt binaries** for macOS (arm64/x64), Linux (arm64/x64), and Windows (arm64/x64) are on the [Releases](https://github.com/FerroxLabs/wayland-core/releases) page, each verifiable against `wayland-core-checksums.txt`.
+**Prebuilt binaries** for macOS (arm64/x64), Linux (arm64/x64), and Windows (arm64/x64) are on the [Releases](https://github.com/APEX-AI-LABS-LLP/apexrouter-cli/releases) page, each verifiable against `apexrouter-cli-checksums.txt`.
 
 **From source** (Rust 1.95+):
 
 ```bash
-cargo install --git https://github.com/FerroxLabs/wayland-core wcore-cli
+cargo install --git https://github.com/APEX-AI-LABS-LLP/apexrouter-cli wcore-cli
 ```
 
 ## Quick start
 
 ```bash
 # 1. Generate a config, then add an API key for any provider
-wayland-core --init-config
-wayland-core --config-path        # shows where the config lives
+apexrouter-cli --init-config
+apexrouter-cli --config-path        # shows where the config lives
 
 # 2. One-shot: the agent reads files and uses tools to answer
-wayland-core "Read Cargo.toml and explain the dependencies"
+apexrouter-cli "Read Cargo.toml and explain the dependencies"
 
 # 3. Interactive TUI (just run it)
-wayland-core
+apexrouter-cli
 
 # 4. Everything else
-wayland-core --help
+apexrouter-cli --help
 ```
 
 ---
 
 ## Providers & model routing
 
-Most terminal agents are married to one vendor. Wayland Core is built provider-neutral from the foundation up: the engine only ever sees provider-neutral types, and every vendor's quirks are pushed into a configuration layer instead of the code.
+Most terminal agents are married to one vendor. ApexRouter CLI is built provider-neutral from the foundation up: the engine only ever sees provider-neutral types, and every vendor's quirks are pushed into a configuration layer instead of the code.
 
 - **~20 first-class provider integrations**, written in-tree: Anthropic, OpenAI, Google Gemini, Google Vertex AI, AWS Bedrock (real SigV4 signing and event-stream framing), Cohere, Azure OpenAI, plus Groq, DeepSeek, Mistral, Together, Fireworks, xAI, Qwen, Moonshot, Nvidia, Cerebras, Perplexity, OpenRouter, and Ollama for local models.
 - **A 104-entry [models.dev](https://models.dev) catalog** on top of those, so 100+ more endpoints are selectable by id with no code change.
@@ -108,18 +108,18 @@ Resilience is on by default. Every provider call is wrapped in a circuit breaker
 
 <div align="center">
 
-![Providers and model routing — Wayland Core vs OpenClaw, Hermes, opencode, aider](docs/img/compare-providers.png)
+![Providers and model routing — ApexRouter CLI vs OpenClaw, Hermes, opencode, aider](docs/img/compare-providers.png)
 
 </div>
 
 ## Orchestration & swarms
 
-A single agent is the floor, not the ceiling. Wayland Core fans work out across many agents and brings the results back, with real isolation between workers.
+A single agent is the floor, not the ceiling. ApexRouter CLI fans work out across many agents and brings the results back, with real isolation between workers.
 
 - **Sub-agents (`Spawn`)** fan parallel work out from one tool call, each with its own turn loop. Concurrency caps scale by tier.
 - **Worktree swarm** runs N workers as subprocesses, each in its own fresh git worktree on its own branch, with a dirty-checkout guard that refuses to dispatch on an uncommitted tree, per-worker timeouts, and idempotent cleanup. Process isolation, not threads, so one bad worker cannot corrupt another.
 - **ForgeFlows** are declarative RON workflows that lower onto the engine's own execution graph, so stages are real sub-agents rather than a separate interpreter. Stages are schema-validated and self-retrying: a stage whose output fails its schema is re-dispatched with the error, and completed stages are never discarded on a later failure.
-- **Selectable reducers.** Roll worker results up with `wayland swarm --reduce mesh|fleet|consensus|debate` — majority consensus, multi-round debate, or a plain fan-in.
+- **Selectable reducers.** Roll worker results up with `apexrouter swarm --reduce mesh|fleet|consensus|debate` — majority consensus, multi-round debate, or a plain fan-in.
 
 <div align="center">
 
@@ -157,7 +157,7 @@ Security is a default, not a setting, and it is built to hold up when someone re
 
 ## Built to endure
 
-Most agent demos prove an agent can finish a task. The harder question is whether one can run unattended for a long time, on its own codebase, surviving crashes and injected faults without ever drifting or corrupting its state. We are putting Wayland Core through exactly that, as an open endurance trial.
+Most agent demos prove an agent can finish a task. The harder question is whether one can run unattended for a long time, on its own codebase, surviving crashes and injected faults without ever drifting or corrupting its state. We are putting ApexRouter CLI through exactly that, as an open endurance trial.
 
 <div align="center">
 
@@ -181,11 +181,11 @@ Per-project long-term memory, indexed with full-text search and local vector emb
 
 ## Self-evolution (GEPA)
 
-Wayland Core ships a scored evolutionary optimizer: it generates variant prompts and skills, scores them against your own reference cases, and keeps the winners. It is behind explicit trust boundaries, and it is one of the few capabilities no sibling engine ships.
+ApexRouter CLI ships a scored evolutionary optimizer: it generates variant prompts and skills, scores them against your own reference cases, and keeps the winners. It is behind explicit trust boundaries, and it is one of the few capabilities no sibling engine ships.
 
 ## Extensibility
 
-- **MCP, both directions.** Connect to many MCP servers concurrently over stdio, SSE, or streamable-HTTP (a wedged server is skipped, not fatal), and inject servers at runtime mid-session. Wayland Core also **runs as an MCP server that advertises and executes its own built-in tools**, so another agent can drive it over MCP.
+- **MCP, both directions.** Connect to many MCP servers concurrently over stdio, SSE, or streamable-HTTP (a wedged server is skipped, not fatal), and inject servers at runtime mid-session. ApexRouter CLI also **runs as an MCP server that advertises and executes its own built-in tools**, so another agent can drive it over MCP.
 - **~70 built-in tools.** `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `Spawn` are the headline; the catalog also covers git, GitHub, Kubernetes, Postgres, PDF, and more. `Bash` runs network-denied with secrets scrubbed from its environment by default.
 - **Skills.** Markdown plus YAML front matter, with path-glob conditional activation, forked context, a per-skill model pin, a per-skill tool allowlist, and shell-expansion directives.
 - **Hooks.** Shell or native hooks on `pre_tool_use` / `post_tool_use` / `stop`; a pre-hook can block a tool call.
@@ -195,7 +195,7 @@ Wayland Core ships a scored evolutionary optimizer: it generates variant prompts
 
 <div align="center">
 
-![Built-in tools, compared — Wayland Core vs OpenClaw, Hermes, opencode, aider](docs/img/compare-tools.png)
+![Built-in tools, compared — ApexRouter CLI vs OpenClaw, Hermes, opencode, aider](docs/img/compare-tools.png)
 
 </div>
 
@@ -210,10 +210,10 @@ Wayland Core ships a scored evolutionary optimizer: it generates variant prompts
 Run it headless and drive it over JSON Lines:
 
 ```bash
-wayland-core --json-stream
+apexrouter-cli --json-stream
 ```
 
-The host sends `Message` / `SetConfig` / `SetMode` / `Stop` commands and receives a typed event stream (`text_delta`, `tool_request`, `tool_result`, `config_changed`, `stream_end`), including an honest `retryable` flag on errors and a mid-turn `Stop` that cleanly ends the turn. This is exactly how Wayland Desktop embeds the engine. [→ docs/json-stream-protocol.md](docs/json-stream-protocol.md)
+The host sends `Message` / `SetConfig` / `SetMode` / `Stop` commands and receives a typed event stream (`text_delta`, `tool_request`, `tool_result`, `config_changed`, `stream_end`), including an honest `retryable` flag on errors and a mid-turn `Stop` that cleanly ends the turn. This is exactly how ApexRouter Desktop embeds the engine. [→ docs/json-stream-protocol.md](docs/json-stream-protocol.md)
 
 ## Architecture
 
@@ -240,12 +240,12 @@ A workspace of focused crates. Dependencies flow strictly downward; the engine o
 We ran a file-level audit of the open-source agent CLIs and a docs-level orientation against the closed ones. Where we lose, we say so (git auto-commit loops, for instance, belong to opencode and aider).
 
 <!-- HEADLINE COMPARISON GRAPHIC: docs/img/compare-capabilities.png
-![How Wayland Core compares](docs/img/compare-capabilities.png)
+![How ApexRouter CLI compares](docs/img/compare-capabilities.png)
 -->
 
 <div align="center">
 
-![Landscape comparison — Wayland Core vs opencode, aider, Claude Code, Codex CLI](docs/img/compare-capabilities.png)
+![Landscape comparison — ApexRouter CLI vs opencode, aider, Claude Code, Codex CLI](docs/img/compare-capabilities.png)
 
 </div>
 
@@ -270,8 +270,8 @@ Issues and PRs welcome. Before a PR: `cargo fmt --all`, `cargo clippy --workspac
 
 ## License
 
-[Apache-2.0](LICENSE). Wayland Core is a derivative work; see [NOTICE](NOTICE) for upstream attribution.
+[Apache-2.0](LICENSE). ApexRouter CLI is a derivative work; see [NOTICE](NOTICE) for upstream attribution.
 
 <div align="center">
-<sub>Part of the Forge Suite · <a href="https://getwayland.com">getwayland.com</a></sub>
+<sub>Part of the Forge Suite · <a href="https://apexrouter.io">apexrouter.io</a></sub>
 </div>

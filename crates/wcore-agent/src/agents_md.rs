@@ -34,7 +34,7 @@ pub fn collect_agents_md(cwd: &str) -> Vec<AgentsMdFile> {
     let cwd_path = Path::new(cwd);
     let mut files = Vec::new();
 
-    // 1. Global: <config_dir>/wayland-core/AGENTS.md
+    // 1. Global: <config_dir>/apexrouter-cli/AGENTS.md
     if let Some(global_path) = app_config_dir().map(|d| d.join("AGENTS.md"))
         && let Some(file) = read_agents_md(&global_path, true)
     {
@@ -470,7 +470,7 @@ mod tests {
     fn test_format_global_and_project() {
         let files = vec![
             AgentsMdFile {
-                path: PathBuf::from("/home/user/.config/wayland-core/AGENTS.md"),
+                path: PathBuf::from("/home/user/.config/apexrouter-cli/AGENTS.md"),
                 content: "Global rules".to_string(),
                 is_global: true,
             },

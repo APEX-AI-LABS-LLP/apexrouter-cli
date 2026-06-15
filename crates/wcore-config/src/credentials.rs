@@ -6,7 +6,7 @@
 //! Two backends ship:
 //!
 //! * `PlaintextCredentialsStore` — backs onto the existing
-//!   `~/.config/wayland-core/config.toml` path; every save enforces
+//!   `~/.config/apexrouter-cli/config.toml` path; every save enforces
 //!   `0o600` perms on Unix and tries a deny-all ACL on Windows. Default
 //!   backend when no `[storage.credentials]` block is present.
 //! * `KeyringCredentialsStore` — uses the OS credential store via the
@@ -26,7 +26,7 @@ use thiserror::Error;
 /// Configurable backend for credential storage. Selected via the
 /// `[storage.credentials]` section in `config.toml`.
 ///
-/// Rollback: set `WAYLAND_VAULT=plaintext` (env var) before startup to
+/// Rollback: set `APEXROUTER_CLI_VAULT=plaintext` (env var) before startup to
 /// skip the auto-migration prompt and keep using the legacy `Plaintext`
 /// backend. The migration entrypoint itself is wired in a later wave;
 /// this variant only defines the on-disk shape and crypto primitives.
@@ -43,7 +43,7 @@ pub enum CredentialsBackend {
     /// `cipher_path` holds the ciphertext blob (`nonce(24) || ct`) and
     /// `key_params_path` holds the non-secret KDF params as JSON.
     EncryptedFile {
-        /// Path to the cipher-text file (e.g. ~/.wayland/credentials.enc).
+        /// Path to the cipher-text file (e.g. ~/.apexrouter/credentials.enc).
         cipher_path: PathBuf,
         /// Path to the KDF params file (salt, m_cost, t_cost, p_cost — non-secret).
         key_params_path: PathBuf,
@@ -56,7 +56,7 @@ pub struct CredentialsStorageConfig {
     #[serde(default)]
     pub backend: CredentialsBackend,
     /// Optional service identifier used by the keyring backend. Defaults
-    /// to `"wayland-core"` when omitted; surfaces so different installs
+    /// to `"apexrouter-cli"` when omitted; surfaces so different installs
     /// (e.g. development vs. shipped) can keep their secrets separate.
     #[serde(default)]
     pub service_name: Option<String>,
@@ -182,7 +182,7 @@ impl CredentialsStore for PlaintextCredentialsStore {
 /// Backed by the `keyring` crate (macOS Keychain on Apple, Windows
 /// Credential Manager on Windows, Secret Service on Linux). Each
 /// `key` is mapped to a `(service, user)` pair; we use the
-/// configured service name (default `"wayland-core"`) and the key
+/// configured service name (default `"apexrouter-cli"`) and the key
 /// itself as the user — this keeps lookup O(1) and matches the
 /// `keyring` crate's expected shape.
 pub struct KeyringCredentialsStore {
@@ -244,7 +244,7 @@ impl CredentialsStore for KeyringCredentialsStore {
 /// stays portable across backends.
 ///
 /// Passphrase resolution (first match wins):
-/// 1. `WAYLAND_VAULT_PASSPHRASE` env var (logged at WARN — visible via
+/// 1. `APEXROUTER_CLI_VAULT_PASSPHRASE` env var (logged at WARN — visible via
 ///    `/proc/<pid>/environ` on Linux; document a future
 ///    `CredentialsBackend::Pipe` for production).
 /// 2. Interactive `rpassword` prompt on a TTY.
@@ -297,7 +297,7 @@ fn validate_readable_fd(fd: std::os::unix::io::RawFd) -> Result<(), CredentialsE
 
     let reject = |reason: &str| {
         Err(CredentialsError::BackendUnavailable(format!(
-            "WAYLAND_VAULT_PASSPHRASE_FD={fd} {reason}"
+            "APEXROUTER_CLI_VAULT_PASSPHRASE_FD={fd} {reason}"
         )))
     };
 
@@ -336,10 +336,10 @@ impl EncryptedFileCredentialsStore {
     /// Resolve a passphrase from a file descriptor, env var, or interactive prompt.
     ///
     /// F-055 — resolution order:
-    ///   1. `WAYLAND_VAULT_PASSPHRASE_FD` env var: read passphrase from the
+    ///   1. `APEXROUTER_CLI_VAULT_PASSPHRASE_FD` env var: read passphrase from the
     ///      given file descriptor number (e.g. `--passphrase-fd 3`).  This is
     ///      invisible in `/proc/<pid>/environ` and avoids the env-var leak.
-    ///   2. `WAYLAND_VAULT_PASSPHRASE` env var (legacy, kept for backwards
+    ///   2. `APEXROUTER_CLI_VAULT_PASSPHRASE` env var (legacy, kept for backwards
     ///      compatibility). Emits a warning about the `/proc` visibility risk.
     ///   3. Interactive `rpassword` prompt.
     fn read_passphrase() -> Result<zeroize::Zeroizing<String>, CredentialsError> {
@@ -348,10 +348,10 @@ impl EncryptedFileCredentialsStore {
         // which the keyring backend doesn't expose. On Windows + targets
         // without unix-style fds, the code falls through to path 2/3.
         #[cfg(unix)]
-        if let Ok(fd_str) = std::env::var("WAYLAND_VAULT_PASSPHRASE_FD") {
+        if let Ok(fd_str) = std::env::var("APEXROUTER_CLI_VAULT_PASSPHRASE_FD") {
             let fd: std::os::unix::io::RawFd = fd_str.parse().map_err(|_| {
                 CredentialsError::BackendUnavailable(format!(
-                    "WAYLAND_VAULT_PASSPHRASE_FD is not a valid integer: {fd_str}"
+                    "APEXROUTER_CLI_VAULT_PASSPHRASE_FD is not a valid integer: {fd_str}"
                 ))
             })?;
             // supply-unsafe-63: the fd number is fully attacker-influenced
@@ -379,11 +379,11 @@ impl EncryptedFileCredentialsStore {
         }
 
         // F-055 path 2: env var (legacy, warned).
-        if let Ok(pp) = std::env::var("WAYLAND_VAULT_PASSPHRASE") {
+        if let Ok(pp) = std::env::var("APEXROUTER_CLI_VAULT_PASSPHRASE") {
             tracing::warn!(
                 target: "wcore_credentials",
-                "WAYLAND_VAULT_PASSPHRASE provided via env var — visible via \
-                 /proc/<pid>/environ on Linux. Set WAYLAND_VAULT_PASSPHRASE_FD \
+                "APEXROUTER_CLI_VAULT_PASSPHRASE provided via env var — visible via \
+                 /proc/<pid>/environ on Linux. Set APEXROUTER_CLI_VAULT_PASSPHRASE_FD \
                  to a file descriptor number to avoid this leak."
             );
             return Ok(zeroize::Zeroizing::new(pp));
@@ -540,7 +540,7 @@ pub fn open_store(
             let service = cfg
                 .service_name
                 .clone()
-                .unwrap_or_else(|| "wayland-core".to_string());
+                .unwrap_or_else(|| "apexrouter-cli".to_string());
             Ok(Box::new(KeyringCredentialsStore::new(service)))
         }
         // S11 (v0.6.3): EncryptedFile backend is wired here. Crypto primitives
@@ -1001,9 +1001,9 @@ mod tests {
 
     impl EnvPassphraseGuard {
         fn set(value: &str) -> Self {
-            let prior = std::env::var("WAYLAND_VAULT_PASSPHRASE").ok();
+            let prior = std::env::var("APEXROUTER_CLI_VAULT_PASSPHRASE").ok();
             unsafe {
-                std::env::set_var("WAYLAND_VAULT_PASSPHRASE", value);
+                std::env::set_var("APEXROUTER_CLI_VAULT_PASSPHRASE", value);
             }
             Self { prior }
         }
@@ -1013,8 +1013,8 @@ mod tests {
         fn drop(&mut self) {
             unsafe {
                 match &self.prior {
-                    Some(v) => std::env::set_var("WAYLAND_VAULT_PASSPHRASE", v),
-                    None => std::env::remove_var("WAYLAND_VAULT_PASSPHRASE"),
+                    Some(v) => std::env::set_var("APEXROUTER_CLI_VAULT_PASSPHRASE", v),
+                    None => std::env::remove_var("APEXROUTER_CLI_VAULT_PASSPHRASE"),
                 }
             }
         }

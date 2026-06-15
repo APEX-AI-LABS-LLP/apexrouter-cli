@@ -1,5 +1,5 @@
 //! Host-side CUA adapter — wires a `wcore-plugin-api`-mirrored
-//! `CuaToolSpec` (registered by a plugin shell such as `wayland-cua`)
+//! `CuaToolSpec` (registered by a plugin shell such as `apexrouter-cua`)
 //! into a concrete `wcore_cua::CuaTool` and stages it for the engine's
 //! tool dispatcher.
 //!
@@ -14,7 +14,7 @@
 //! **Audit F7 positive invariance.** `from_spec` consults
 //! `wcore_cua::backends::linux_wayland::compositor_allows_background_input`
 //! at the time of reification and refuses to mint a tool on restricted
-//! Wayland compositors. This adapter surfaces that as a typed
+//! ApexRouter compositors. This adapter surfaces that as a typed
 //! registration failure rather than silently falling back.
 
 use std::sync::Arc;
@@ -40,7 +40,7 @@ pub struct RegisteredCuaTool {
 /// engine boot path calls after `Plugin::initialize` returns.
 ///
 /// Splitting registration (sync, infallible from the plugin's view)
-/// from reification (sync, fallible — may produce `WaylandRestricted`
+/// from reification (sync, fallible — may produce `ApexRouterRestricted`
 /// or `CapabilityDisabled`) keeps the plugin-init phase deterministic
 /// while still surfacing real per-platform errors at the boot stage
 /// where the host can react.
@@ -147,7 +147,7 @@ mod tests {
         }
     }
 
-    fn clear_wayland_env() {
+    fn clear_apexrouter_env() {
         unsafe {
             std::env::remove_var("WCORE_CUA_TEST_WAYLAND_PERMISSIVE");
             std::env::remove_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED");
@@ -159,7 +159,7 @@ mod tests {
     fn capability_disabled_propagates_through_adapter() {
         let mut reg = HostCuaRegistrar::new(/*advertised=*/ false);
         {
-            let mut cap = reg.capture_for_plugin("wayland-cua");
+            let mut cap = reg.capture_for_plugin("apexrouter-cua");
             cap.host_register(fixture_spec("Cua")).unwrap();
         }
         let (ok, errs) = reg.reify_all();
@@ -168,16 +168,16 @@ mod tests {
         assert!(matches!(errs[0].1, CuaError::CapabilityDisabled));
     }
 
-    /// Audit F7: on macOS / Windows (non-Wayland targets), reification
+    /// Audit F7: on macOS / Windows (non-ApexRouter targets), reification
     /// succeeds when capability is advertised.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     #[serial]
     fn reifies_real_cua_tool_on_non_linux() {
-        clear_wayland_env();
+        clear_apexrouter_env();
         let mut reg = HostCuaRegistrar::new(true);
         {
-            let mut cap = reg.capture_for_plugin("wayland-cua");
+            let mut cap = reg.capture_for_plugin("apexrouter-cua");
             cap.host_register(fixture_spec("Cua")).unwrap();
         }
         let (ok, errs) = reg.reify_all();
@@ -188,30 +188,30 @@ mod tests {
         assert_eq!(ok.len(), 1);
         use wcore_tools::Tool;
         assert_eq!(ok[0].tool.name(), "Cua");
-        assert_eq!(ok[0].plugin, "wayland-cua");
+        assert_eq!(ok[0].plugin, "apexrouter-cua");
     }
 
-    /// Audit F7 on Linux Wayland: restricted compositor refuses
+    /// Audit F7 on Linux ApexRouter: restricted compositor refuses
     /// registration through the adapter.
     #[cfg(target_os = "linux")]
     #[test]
     #[serial]
-    fn restricted_wayland_compositor_refuses_through_adapter() {
-        clear_wayland_env();
+    fn restricted_apexrouter_compositor_refuses_through_adapter() {
+        clear_apexrouter_env();
         unsafe {
             std::env::set_var("WAYLAND_DISPLAY", "wayland-test");
             std::env::set_var("WCORE_CUA_TEST_WAYLAND_RESTRICTED", "1");
         }
         let mut reg = HostCuaRegistrar::new(true);
         {
-            let mut cap = reg.capture_for_plugin("wayland-cua");
+            let mut cap = reg.capture_for_plugin("apexrouter-cua");
             cap.host_register(fixture_spec("Cua")).unwrap();
         }
         let (ok, errs) = reg.reify_all();
-        clear_wayland_env();
+        clear_apexrouter_env();
         assert!(ok.is_empty());
         assert_eq!(errs.len(), 1);
-        assert!(matches!(errs[0].1, CuaError::WaylandRestricted { .. }));
+        assert!(matches!(errs[0].1, CuaError::ApexRouterRestricted { .. }));
     }
 
     /// Plugin-id propagation: the `policy.plugin_id` carried into the
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     #[serial]
     fn plugin_id_propagates_to_real_policy() {
-        clear_wayland_env();
+        clear_apexrouter_env();
         let mut reg = HostCuaRegistrar::new(true);
         {
             let mut cap = reg.capture_for_plugin("custom-cua-plugin");

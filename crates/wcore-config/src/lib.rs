@@ -29,7 +29,7 @@ pub mod debug;
 pub mod env_file;
 pub mod file_cache;
 pub mod hooks;
-// v0.7.0 Task 1.B.1: convenience facade over `keyring` for `wayland init` + channels.
+// v0.7.0 Task 1.B.1: convenience facade over `keyring` for `apexrouter init` + channels.
 pub mod keychain;
 pub mod plan;
 pub mod plugins_config;

@@ -1,7 +1,7 @@
-# Releasing wayland-core
+# Releasing apexrouter-cli
 
-This repo publishes pre-built binaries to GitHub Releases for the Wayland app
-(`scripts/prepareWaylandCore.js`) to download. Releases are normally produced
+This repo publishes pre-built binaries to GitHub Releases for the ApexRouter app
+(`scripts/prepareApexRouterCore.js`) to download. Releases are normally produced
 by CI; this doc covers both the happy path and the manual fallback.
 
 ## Versioning
@@ -27,14 +27,14 @@ from conventional-commit messages on `main`:
 4. On merge, the `Release Please` workflow:
    - Creates git tag `vX.Y.Z` and a GitHub Release with auto-generated notes.
    - Calls the `Release` workflow via `workflow_call`.
-5. The `Release` workflow builds `wayland-core` for six targets, packages each
-   as `wayland-core-vX.Y.Z-<target>.{tar.gz,zip}`, generates
-   `wayland-core-checksums.txt`, mints a **keyless Sigstore build-provenance
+5. The `Release` workflow builds `apexrouter-cli` for six targets, packages each
+   as `apexrouter-cli-vX.Y.Z-<target>.{tar.gz,zip}`, generates
+   `apexrouter-cli-checksums.txt`, mints a **keyless Sigstore build-provenance
    attestation** for each archive (`actions/attest-build-provenance`), and
    uploads all artifacts to the GitHub Release created in step 4.
-6. The app's `scripts/prepareWaylandCore.js` downloads the asset matching its
-   host platform from `https://github.com/FerroxLabs/wayland-core/releases/`.
-7. `publish-npm` publishes `@ferroxlabs/wayland-core` (+ platform packages)
+6. The app's `scripts/prepareApexRouterCore.js` downloads the asset matching its
+   host platform from `https://github.com/APEX-AI-LABS-LLP/apexrouter-cli/releases/`.
+7. `publish-npm` publishes `@APEX-AI-LABS-LLP/apexrouter-cli` (+ platform packages)
    with `npm publish --provenance`, emitting a transparency-logged provenance
    statement per package.
 
@@ -49,10 +49,10 @@ channels are signed keylessly via GitHub OIDC + Sigstore:
   on the `github-release` job (already set). Public repo only.
 - **npm packages** — `npm publish --provenance` under `id-token: write`. The
   package `repository.url` **must** case-match the GitHub slug
-  (`FerroxLabs/wayland-core`); npm 422s on a mismatch (enforced in
+  (`APEX-AI-LABS-LLP/apexrouter-cli`); npm 422s on a mismatch (enforced in
   `npm/generate.mjs`).
 
-`wayland-core self-update` verifies the archive's attestation with
+`apexrouter-cli self-update` verifies the archive's attestation with
 `gh attestation verify` before installing, and **fails closed** if `gh` is
 absent (it does not skip verification). There is nothing to rotate; deleting or
 rolling a key is not part of a release cut.
@@ -72,7 +72,7 @@ Targets built:
 
 ```bash
 gh workflow run release.yml \
-  --repo FerroxLabs/wayland-core \
+  --repo APEX-AI-LABS-LLP/apexrouter-cli \
   --field tag_name=vX.Y.Z
 ```
 
@@ -90,23 +90,23 @@ Per target, on the matching host (or via `cross` for Linux aarch64):
 git checkout vX.Y.Z
 cargo build --release --target <target> -p wcore-cli
 cd target/<target>/release
-tar -czf wayland-core-vX.Y.Z-<target>.tar.gz wayland-core   # or wayland-core.exe on Windows (use zip there)
+tar -czf apexrouter-cli-vX.Y.Z-<target>.tar.gz apexrouter-cli   # or apexrouter-cli.exe on Windows (use zip there)
 ```
 
 Then:
 
 ```bash
 gh release upload vX.Y.Z \
-  wayland-core-vX.Y.Z-<target>.tar.gz \
-  --repo FerroxLabs/wayland-core \
+  apexrouter-cli-vX.Y.Z-<target>.tar.gz \
+  --repo APEX-AI-LABS-LLP/apexrouter-cli \
   --clobber
 ```
 
 Regenerate checksums after all six artifacts are uploaded:
 
 ```bash
-shasum -a 256 wayland-core-vX.Y.Z-* > wayland-core-checksums.txt
-gh release upload vX.Y.Z wayland-core-checksums.txt --clobber
+shasum -a 256 apexrouter-cli-vX.Y.Z-* > apexrouter-cli-checksums.txt
+gh release upload vX.Y.Z apexrouter-cli-checksums.txt --clobber
 ```
 
 ## Verifying a release
@@ -114,8 +114,8 @@ gh release upload vX.Y.Z wayland-core-checksums.txt --clobber
 After publication, smoke-check the asset list:
 
 ```bash
-gh release view vX.Y.Z --repo FerroxLabs/wayland-core --json assets \
+gh release view vX.Y.Z --repo APEX-AI-LABS-LLP/apexrouter-cli --json assets \
   --jq '.assets[].name'
 ```
 
-Expect six platform archives plus `wayland-core-checksums.txt`.
+Expect six platform archives plus `apexrouter-cli-checksums.txt`.

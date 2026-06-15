@@ -104,15 +104,15 @@ advertise the same name the binding is refused and the hook stays log-only.
 **Kill-switch:** `hooks.dispatch_enabled` (default `true`) disables all hook→
 context dispatch when set to `false`, leaving plugins and MCP otherwise intact.
 
-## Plugin MCP Server Home (`~/.wayland`)
+## Plugin MCP Server Home (`~/.apexrouter`)
 
-Plugin installers write under `~/.wayland` (the *profile home*), and the host
+Plugin installers write under `~/.apexrouter` (the *profile home*), and the host
 exposes that same root to launched plugin MCP servers so a server can find its
 installed assets. The resolution order is:
 
-1. `$WAYLAND_PROFILE_HOME` / `$WAYLAND_HOME` when set (sandbox / hermetic
+1. `$APEXROUTER_CLI_PROFILE_HOME` / `$APEXROUTER_CLI_HOME` when set (sandbox / hermetic
    override; ignored if it contains control characters)
-2. `~/.wayland` (the cross-platform default)
+2. `~/.apexrouter` (the cross-platform default)
 
 This is framework-neutral: any plugin that ships an MCP server uses the same
 handshake.

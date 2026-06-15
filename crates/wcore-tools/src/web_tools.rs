@@ -1,6 +1,6 @@
 //! T3-3.8 — `web_search` / `web_extract` / `web_crawl` tools.
 //!
-//! Ported from `wayland-hermes/agent/tools/web_tools.py` (2314 LOC). The
+//! Ported from `apexrouter-hermes/agent/tools/web_tools.py` (2314 LOC). The
 //! Python original is a multi-backend dispatcher across Exa / Firecrawl /
 //! Parallel / Tavily / DuckDuckGo / trafilatura, each with its own HTTP
 //! client, response normalizer, optional LLM-summarization pass, and
@@ -439,7 +439,7 @@ impl WebBackend for CapturingWebBackend {
     }
 }
 
-/// `web` tool — Wayland engine port of hermes' three web entry points.
+/// `web` tool — ApexRouter engine port of hermes' three web entry points.
 ///
 /// Single Tool with an `operation` discriminator (search / extract /
 /// crawl) that dispatches through a host-supplied [`WebBackend`]. Use

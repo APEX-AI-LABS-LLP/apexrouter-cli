@@ -70,9 +70,9 @@ mcp_servers = ["filesystem", "github"]
 ### Usage
 
 ```bash
-wayland-core --profile claude-fast "Quick question"
-wayland-core --profile claude-deep "Deep security audit"
-wayland-core --profile dev "Create a GitHub issue"
+apexrouter-cli --profile claude-fast "Quick question"
+apexrouter-cli --profile claude-deep "Deep security audit"
+apexrouter-cli --profile dev "Create a GitHub issue"
 ```
 
 - Supports multi-level inheritance chains
@@ -159,7 +159,7 @@ model = "claude-sonnet-4-6@20251015"
 
 ## Ollama (local inference, W8a)
 
-Ollama is shipped as a plugin (`wayland-ollama`) rather than as a
+Ollama is shipped as a plugin (`apexrouter-ollama`) rather than as a
 built-in provider. The plugin registers an `LlmProvider`
 implementation through `wcore-plugin-api::register_providers`; the
 engine downcasts to a real provider via the existing
@@ -168,21 +168,21 @@ engine downcasts to a real provider via the existing
 ### Selection
 
 ```bash
-wayland-core --model ollama:llama-4
-wayland-core --model ollama:qwen3-coder
+apexrouter-cli --model ollama:llama-4
+apexrouter-cli --model ollama:qwen3-coder
 ```
 
-The `ollama:` prefix routes through the wayland-ollama plugin. The
+The `ollama:` prefix routes through the apexrouter-ollama plugin. The
 suffix is the model name as known to your local Ollama daemon. The
 plugin contacts `http://localhost:11434` by default; override via
 the standard `OLLAMA_HOST` environment variable.
 
 ### Requirements
 
-- The `wayland-ollama` plugin must be enabled in `plugins.toml`
+- The `apexrouter-ollama` plugin must be enabled in `plugins.toml`
   (default: enabled). Disable via:
   ```toml
-  [plugins.wayland-ollama]
+  [plugins.apexrouter-ollama]
   enabled = false
   ```
 - A running Ollama daemon and a pulled model. See
@@ -191,7 +191,7 @@ the standard `OLLAMA_HOST` environment variable.
 ### Capability flag
 
 `capabilities.plugins` flips to `true` whenever any plugin (including
-wayland-ollama) is loaded — see W8c.3 H.2 plugin-aware capability
+apexrouter-ollama) is loaded — see W8c.3 H.2 plugin-aware capability
 advertising in `crates/wcore-agent/src/output/protocol_sink.rs`.
 
 ---
@@ -204,16 +204,16 @@ Bedrock and Vertex IDs are long (`anthropic.claude-sonnet-4-6-20251015-v1:0`,
 provider request is built.
 
 ```bash
-wayland-core --model bedrock:sonnet     # ⇒ anthropic.claude-sonnet-4-6-20251015-v1:0
-wayland-core --model bedrock:opus       # ⇒ anthropic.claude-opus-4-6-20251015-v1:0
-wayland-core --model bedrock:haiku      # ⇒ anthropic.claude-haiku-4-5-20251001-v1:0
-wayland-core --model vertex:sonnet      # ⇒ claude-sonnet-4-6@20251015
-wayland-core --model vertex:opus        # ⇒ claude-opus-4-6@20251015
-wayland-core --model vertex:haiku       # ⇒ claude-haiku-4-5@20251001
-wayland-core --model vertex:gemini-pro  # ⇒ gemini-2.5-pro
-wayland-core --model vertex:gemini-flash # ⇒ gemini-2.5-flash
-wayland-core --model anthropic:sonnet   # ⇒ claude-sonnet-4-6
-wayland-core --model openai:gpt-4o      # ⇒ gpt-4o
+apexrouter-cli --model bedrock:sonnet     # ⇒ anthropic.claude-sonnet-4-6-20251015-v1:0
+apexrouter-cli --model bedrock:opus       # ⇒ anthropic.claude-opus-4-6-20251015-v1:0
+apexrouter-cli --model bedrock:haiku      # ⇒ anthropic.claude-haiku-4-5-20251001-v1:0
+apexrouter-cli --model vertex:sonnet      # ⇒ claude-sonnet-4-6@20251015
+apexrouter-cli --model vertex:opus        # ⇒ claude-opus-4-6@20251015
+apexrouter-cli --model vertex:haiku       # ⇒ claude-haiku-4-5@20251001
+apexrouter-cli --model vertex:gemini-pro  # ⇒ gemini-2.5-pro
+apexrouter-cli --model vertex:gemini-flash # ⇒ gemini-2.5-flash
+apexrouter-cli --model anthropic:sonnet   # ⇒ claude-sonnet-4-6
+apexrouter-cli --model openai:gpt-4o      # ⇒ gpt-4o
 ```
 
 Strings that don't match a known `<provider>:<role>` pair flow through

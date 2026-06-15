@@ -98,7 +98,7 @@ impl HttpFetchBackend {
             // pretending to be a browser.
             .header(
                 reqwest::header::USER_AGENT,
-                "wayland-core/WebFetch (https://github.com/FerroxLabs/wayland-core)",
+                "apexrouter-cli/WebFetch (https://github.com/APEX-AI-LABS-LLP/apexrouter-cli)",
             )
             .header(
                 reqwest::header::ACCEPT,

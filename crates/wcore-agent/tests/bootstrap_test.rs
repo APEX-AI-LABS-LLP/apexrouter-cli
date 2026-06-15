@@ -557,7 +557,7 @@ async fn w2_v063_bootstrap_initializes_kg_when_memory_enabled() {
 
 #[tokio::test]
 async fn w2_v063_bootstrap_skips_kg_when_disabled() {
-    // W2 v0.6.3 inverse path: WAYLAND_KG=off must not block bootstrap. We
+    // W2 v0.6.3 inverse path: APEXROUTER_CLI_KG=off must not block bootstrap. We
     // can't safely flip the global env var inside a parallel test runner, so
     // this test asserts the surface: `kg_enabled()` honors the env contract.
     // The bootstrap code-path is symmetrical (if kg_enabled() returns false,
@@ -573,5 +573,5 @@ async fn w2_v063_bootstrap_skips_kg_when_disabled() {
     unsafe { std::env::set_var(wcore_memory::kg::ENV_KG, "off") };
     let enabled = wcore_memory::kg::kg_enabled();
     unsafe { std::env::remove_var(wcore_memory::kg::ENV_KG) };
-    assert!(!enabled, "WAYLAND_KG=off must disable KG init in bootstrap");
+    assert!(!enabled, "APEXROUTER_CLI_KG=off must disable KG init in bootstrap");
 }

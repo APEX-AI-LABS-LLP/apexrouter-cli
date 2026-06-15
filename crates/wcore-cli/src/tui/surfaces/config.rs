@@ -6,7 +6,7 @@
 //! behind it. The depth is folded into three tiers:
 //!
 //! - **Tier 1 — overview.** The eight high-value settings a normal user
-//!   actually touches, grouped into four intent sections ("How Wayland
+//!   actually touches, grouped into four intent sections ("How ApexRouter
 //!   acts", "Memory & context", ...). Always visible.
 //! - **Tier 2 — section detail.** `⏎` on a section opens a per-section
 //!   detail pane; for radio settings that pane is where the choice is
@@ -199,7 +199,7 @@ struct SettingsModel {
     model: String,
     /// Whether a provider API key is set.
     key_set: bool,
-    // HOW WAYLAND ACTS ----------------------------------------------------
+    // HOW APEXROUTER ACTS ----------------------------------------------------
     /// The approval mode radio.
     approval: ApprovalMode,
     /// Whether plan-first is enabled for big changes.
@@ -261,11 +261,11 @@ enum Row {
     Provider,
     /// CONNECTION · Model.
     Model,
-    /// HOW WAYLAND ACTS · Approval mode.
+    /// HOW APEXROUTER ACTS · Approval mode.
     Approval,
-    /// HOW WAYLAND ACTS · Plan first.
+    /// HOW APEXROUTER ACTS · Plan first.
     PlanFirst,
-    /// HOW WAYLAND ACTS · Stop after N turns.
+    /// HOW APEXROUTER ACTS · Stop after N turns.
     StopAfter,
     /// MEMORY & CONTEXT · Compaction level.
     Compaction,
@@ -308,7 +308,7 @@ impl Row {
     fn section(self) -> Option<&'static str> {
         match self {
             Row::Provider | Row::Model => Some("CONNECTION"),
-            Row::Approval | Row::PlanFirst | Row::StopAfter => Some("HOW WAYLAND ACTS"),
+            Row::Approval | Row::PlanFirst | Row::StopAfter => Some("HOW APEXROUTER ACTS"),
             Row::Compaction | Row::LongTerm => Some("MEMORY & CONTEXT"),
             Row::Expert => None,
         }
@@ -371,7 +371,7 @@ pub struct ConfigSurface {
     /// `Some` while the Tools & Providers credentials modal is open.
     credentials_modal: Option<CredentialsModal>,
     /// H1: one-shot signal that a credentials-modal save just wrote a
-    /// provider key to `~/.wayland/.env`. The credentials write happens deep
+    /// provider key to `~/.apexrouter/.env`. The credentials write happens deep
     /// inside `handle_providers_key` with no `App` access; this flag lets
     /// `handle_key` (which holds `&mut App`) raise `App::rebind_request` so the
     /// router rebinds the live engine — `Config::resolve` re-reads the `.env`
@@ -1220,7 +1220,7 @@ pub(crate) fn resolve_provider_status(entry: &ProviderEntry) -> ProviderStatus {
         // connected" (D030). Decoding is a plain serde_json read of a single
         // field — no `wcore-agent` dependency is needed.
         let tokens_path =
-            dirs::home_dir().map(|h| h.join(".wayland").join("oauth").join("google_meet.json"));
+            dirs::home_dir().map(|h| h.join(".apexrouter").join("oauth").join("google_meet.json"));
         let token_status = tokens_path
             .as_ref()
             .map(|p| google_meet_token_status(p))
@@ -1306,7 +1306,7 @@ impl CredentialsModal {
         self.entry().env_vars.get(self.var_idx).copied()
     }
 
-    /// Attempt to save the buffer to `~/.wayland/.env`. Sets `status`
+    /// Attempt to save the buffer to `~/.apexrouter/.env`. Sets `status`
     /// + `last_ok` for the render path. Returns whether a write happened.
     pub fn save(&mut self) -> bool {
         let Some(key) = self.var_name() else {
@@ -1321,7 +1321,7 @@ impl CredentialsModal {
             return false;
         }
         let env_path = match dirs::home_dir() {
-            Some(h) => h.join(".wayland").join(".env"),
+            Some(h) => h.join(".apexrouter").join(".env"),
             None => {
                 self.status = "Cannot find home directory; aborting save.".into();
                 self.last_ok = false;
@@ -1330,7 +1330,7 @@ impl CredentialsModal {
         };
         match wcore_config::env_file::write_env_var(&env_path, key, &value) {
             Ok(()) => {
-                self.status = format!("Saved {key} to ~/.wayland/.env · applying to this session");
+                self.status = format!("Saved {key} to ~/.apexrouter/.env · applying to this session");
                 self.last_ok = true;
                 true
             }
@@ -1572,7 +1572,7 @@ impl ConfigSurface {
     /// Draw the Tier-1 overview: the four sections, the eight settings,
     /// the expert-entry row, and the footer hint line.
     fn render_overview(&self, frame: &mut Frame, area: Rect, t: &Theme, apply_failed: bool) {
-        let block = panel("Wayland · Settings", t);
+        let block = panel("ApexRouter · Settings", t);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         if inner.height < 3 || inner.width < 10 {
@@ -1841,13 +1841,13 @@ impl ConfigSurface {
             Row::PlanFirst => {
                 lines.push(detail_choice(
                     "on for big changes",
-                    "Wayland drafts a plan and waits for review first.",
+                    "ApexRouter drafts a plan and waits for review first.",
                     self.current.plan_first,
                     t,
                 ));
                 lines.push(detail_choice(
                     "off",
-                    "Wayland acts immediately, no plan step.",
+                    "ApexRouter acts immediately, no plan step.",
                     !self.current.plan_first,
                     t,
                 ));
@@ -2140,7 +2140,7 @@ impl ConfigSurface {
         frame.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled(
-                    "Every tool and provider Wayland can use, with its current status.",
+                    "Every tool and provider ApexRouter can use, with its current status.",
                     Style::default().fg(t.text_dim),
                 )),
                 Line::from(Span::styled(
@@ -2322,13 +2322,13 @@ fn row_label(row: Row) -> &'static str {
 /// The one-line intro shown at the top of a row's Tier-2 detail pane.
 fn detail_intro(row: Row) -> &'static str {
     match row {
-        Row::Approval => "How much Wayland does before it asks you:",
-        Row::Compaction => "How Wayland keeps the conversation inside the context window:",
-        Row::PlanFirst => "Whether Wayland plans before it touches your code:",
-        Row::LongTerm => "Whether Wayland remembers you between sessions:",
-        Row::Provider => "The LLM provider Wayland connects to:",
-        Row::Model => "The model Wayland uses for this provider:",
-        Row::StopAfter => "The runaway guard — how many turns before Wayland halts:",
+        Row::Approval => "How much ApexRouter does before it asks you:",
+        Row::Compaction => "How ApexRouter keeps the conversation inside the context window:",
+        Row::PlanFirst => "Whether ApexRouter plans before it touches your code:",
+        Row::LongTerm => "Whether ApexRouter remembers you between sessions:",
+        Row::Provider => "The LLM provider ApexRouter connects to:",
+        Row::Model => "The model ApexRouter uses for this provider:",
+        Row::StopAfter => "The runaway guard — how many turns before ApexRouter halts:",
         Row::Expert => "",
     }
 }
@@ -2649,8 +2649,8 @@ mod tests {
         // The four intent section headings.
         assert!(text.contains("CONNECTION"), "missing CONNECTION:\n{text}");
         assert!(
-            text.contains("HOW WAYLAND ACTS"),
-            "missing HOW WAYLAND ACTS:\n{text}"
+            text.contains("HOW APEXROUTER ACTS"),
+            "missing HOW APEXROUTER ACTS:\n{text}"
         );
         assert!(
             text.contains("MEMORY & CONTEXT"),
@@ -3064,7 +3064,7 @@ mod tests {
     // value, footer) — not just an internal flag — to guard against a
     // phantom-affordance regression.
 
-    /// Process-global env guard: `WAYLAND_HOME` / `set_var` are process-wide,
+    /// Process-global env guard: `APEXROUTER_CLI_HOME` / `set_var` are process-wide,
     /// so the persisting test serialises through this lock (the same pattern
     /// the theme tests use) to stay hermetic under the concurrent runner.
     static EXPERT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -3147,13 +3147,13 @@ mod tests {
     #[test]
     fn expert_commit_renders_new_value_and_persists() {
         // `⏎` commits: the new value must render (buffer gone) AND land in
-        // `[providers.<active>].compat` on disk. Hermetic via WAYLAND_HOME.
+        // `[providers.<active>].compat` on disk. Hermetic via APEXROUTER_CLI_HOME.
         let _guard = EXPERT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().expect("tempdir");
-        let prev = std::env::var_os("WAYLAND_HOME");
+        let prev = std::env::var_os("APEXROUTER_CLI_HOME");
         // SAFETY: process-global env mutation is serialised by EXPERT_ENV_LOCK;
         // the previous value is restored before the lock is released.
-        unsafe { std::env::set_var("WAYLAND_HOME", dir.path()) };
+        unsafe { std::env::set_var("APEXROUTER_CLI_HOME", dir.path()) };
 
         let mut app = App::new();
         app.config.provider = "anthropic".into();
@@ -3185,8 +3185,8 @@ mod tests {
         // SAFETY: restore the prior env under the same lock.
         unsafe {
             match prev {
-                Some(v) => std::env::set_var("WAYLAND_HOME", v),
-                None => std::env::remove_var("WAYLAND_HOME"),
+                Some(v) => std::env::set_var("APEXROUTER_CLI_HOME", v),
+                None => std::env::remove_var("APEXROUTER_CLI_HOME"),
             }
         }
     }

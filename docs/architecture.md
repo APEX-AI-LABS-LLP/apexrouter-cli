@@ -1,4 +1,4 @@
-# Wayland-Core Architecture
+# ApexRouter-CLI Architecture
 
 > Single source of truth for the engine's layered architecture, cross-crate
 > invariants, and substrate boundaries. Read alongside
@@ -7,8 +7,8 @@
 
 ## 1. Layer map
 
-Wayland-Core is a Cargo workspace of 19 internal `wcore-*` crates plus 5
-`wayland-*` plugin crates (24 total). Dependencies flow **downward** in the
+ApexRouter-CLI is a Cargo workspace of 19 internal `wcore-*` crates plus 5
+`apexrouter-*` plugin crates (24 total). Dependencies flow **downward** in the
 diagram below — never introduce circular or upward references. The full
 crate table with one-line responsibilities lives in
 [AGENTS.md §Crate Map](../AGENTS.md#crate-map).
@@ -49,8 +49,8 @@ crate table with one-line responsibilities lives in
 
   wcore-repomap is a deliberate island — NO internal `wcore-*` deps.
 
-  Plugins (wayland-ollama, wayland-browser, wayland-cua, wayland-ijfw,
-  wayland-honcho) sit OFF the main spine. They depend only on
+  Plugins (apexrouter-ollama, apexrouter-browser, apexrouter-cua, apexrouter-ijfw,
+  apexrouter-honcho) sit OFF the main spine. They depend only on
   wcore-plugin-api + wcore-protocol — never on wcore-browser, wcore-cua,
   wcore-mcp, wcore-memory, or wcore-skills directly (audit F2).
 ```
@@ -67,7 +67,7 @@ are mechanically enforced.
 
 | Rule | What it means | Enforced by |
 |------|---------------|-------------|
-| **Audit F2** (plugin isolation) | Plugin crates (`wayland-*`) MUST NOT depend on `wcore-browser`, `wcore-cua`, `wcore-mcp`, `wcore-memory`, or `wcore-skills`. They use mirror types from `wcore-plugin-api` instead. `wcore-agent` hosts `HostBrowserRegistrar` / `HostCuaRegistrar` to bind the mirror specs to the real backends without leaking the dep. | `build.rs` lint in `wcore-plugin-api`; Cargo manifest review |
+| **Audit F2** (plugin isolation) | Plugin crates (`apexrouter-*`) MUST NOT depend on `wcore-browser`, `wcore-cua`, `wcore-mcp`, `wcore-memory`, or `wcore-skills`. They use mirror types from `wcore-plugin-api` instead. `wcore-agent` hosts `HostBrowserRegistrar` / `HostCuaRegistrar` to bind the mirror specs to the real backends without leaking the dep. | `build.rs` lint in `wcore-plugin-api`; Cargo manifest review |
 | **`ProviderCompat` discipline** | No hardcoded provider conditionals (`if base_url.contains("api.openai.com")`). Provider differences live in `ProviderCompat` config fields with provider-specific defaults (`openai_defaults()`, `anthropic_defaults()`, etc.). | AGENTS.md §Architecture Principles; clippy + review |
 | **Cross-platform shell** | All process spawning goes through `wcore_config::shell` (argv mode for LLM-supplied data, shell-string mode only when shell semantics are the contract). Never `Command::new("sh"/"bash"/"cmd")` directly. | AGENTS.md §Cross-Platform; clippy lint |
 | **Observability decoupling** | `wcore-observability` sits between `wcore-types`/`wcore-config` and `wcore-agent`. `wcore-protocol` stays decoupled via opaque `serde_json::Value` payloads — the protocol crate never imports trace types directly. | dep graph; manual review |
@@ -80,7 +80,7 @@ a sibling violation to be consistent — fix the original.
 
 ## 3. Substrate boundaries
 
-Wayland-Core has **four substrate systems** that overlap conceptually but
+ApexRouter-CLI has **four substrate systems** that overlap conceptually but
 remain peers, not subsets. This boundary discipline is locked per the
 project rule `feedback-dont-overextend-locked-decisions`: "Memory
 substrate = IJFW" applies to **STORAGE only**. Skill curation, GEPA
@@ -97,7 +97,7 @@ them defer their *domain logic* to it.
 **Where it lives:** `.ijfw/` at project root (per-project state) and
 `~/.claude/projects/<id>/memory/` (cross-session memory files). The MCP
 server `mcp__plugin_ijfw_ijfw-memory__*` exposes the read/write surface.
-The `wayland-ijfw` plugin crate is the engine's in-tree anchor — it
+The `apexrouter-ijfw` plugin crate is the engine's in-tree anchor — it
 exercises every `register_*` surface (tools + hooks + agents + skills +
 rules + MCP server) through `wcore-plugin-api` mirror types.
 
@@ -143,7 +143,7 @@ generation, paraphrase mutation, retention), and the eval scoring gate
 - Skill **artifacts** (text bodies, frontmatter, `!shell:` directives)
   live in their own `skills/` directories on disk — bundled in
   `crates/wcore-skills/src/bundled/` and user-installed under
-  `~/.wayland/skills/`.
+  `~/.apexrouter/skills/`.
 - Skill **telemetry** (usage counts, last-used timestamps, success
   rates) lands in `wcore-memory`'s procedural tier — the memory crate
   is the right home for usage state.
@@ -155,7 +155,7 @@ persists state." Skills have their own lifecycle (load → discover →
 condition → execute) that does not match the memory partition model.
 Different concerns; different crates.
 
-### 3.4 wayland-honcho — USER-MODELING substrate
+### 3.4 apexrouter-honcho — USER-MODELING substrate
 
 **Scope:** Honcho-backed user-model inference. Captures preferences,
 history, and inferred attributes ABOUT the user across sessions.
@@ -181,7 +181,7 @@ makes the engine unrunnable when Honcho is offline.
 └────┬──────────┬───────────┬──────────────┬──────────────────┘
      ▼          ▼           ▼              ▼
   ┌────────┐ ┌────────┐ ┌────────────┐ ┌──────────────┐
-  │ wcore- │ │ wcore- │ │  wcore-    │ │  wayland-    │
+  │ wcore- │ │ wcore- │ │  wcore-    │ │  apexrouter-    │
   │ memory │ │ skills │ │  evolve    │ │  honcho      │
   │ (smart │ │ +eval  │ │  (GEPA     │ │  (user-model │
   │ tier)  │ │(learn) │ │  prompts)  │ │   backend)   │
@@ -197,7 +197,7 @@ makes the engine unrunnable when Honcho is offline.
 ```
 
 Each of the four substrates (`wcore-memory`, `wcore-skills` +
-`wcore-evolve` + `wcore-eval`, `wayland-honcho`, and IJFW) has its own
+`wcore-evolve` + `wcore-eval`, `apexrouter-honcho`, and IJFW) has its own
 API, its own tests, and its own domain types. They **compose**; they do
 not subsume each other.
 
@@ -208,9 +208,9 @@ not subsume each other.
 | A new provider (LLM API surface) | `wcore-providers` + a new `ProviderCompat` preset in `wcore-config` |
 | A new built-in tool | `wcore-tools` (registered via `register_tools` in agent bootstrap) |
 | A new memory partition or tier | `wcore-memory/src/partition/` or `wcore-memory/src/tier.rs` |
-| A new skill | `crates/wcore-skills/src/bundled/` (bundled) or user's `~/.wayland/skills/` |
+| A new skill | `crates/wcore-skills/src/bundled/` (bundled) or user's `~/.apexrouter/skills/` |
 | A new MCP server consumer | `wcore-mcp` |
-| A new plugin (3rd-party LLM, alt tool family, custom hook) | New `wayland-<name>` crate using `wcore-plugin-api` mirror types — no `wcore-browser` / `wcore-cua` / `wcore-mcp` / `wcore-memory` / `wcore-skills` deps |
+| A new plugin (3rd-party LLM, alt tool family, custom hook) | New `apexrouter-<name>` crate using `wcore-plugin-api` mirror types — no `wcore-browser` / `wcore-cua` / `wcore-mcp` / `wcore-memory` / `wcore-skills` deps |
 | A new evaluation metric | `wcore-eval` |
 | A new prompt mutator (GEPA) | `wcore-evolve/src/mutator/` |
 | A new permission rule | `wcore-permissions` |
@@ -231,6 +231,6 @@ is the most common source of subsequent refactors.
 - [docs/skills.md](skills.md) — writing skills, front matter, shell expansion, conditional activation
 - [docs/mcp.md](mcp.md) — MCP server integration, transport types, deferred loading
 - [docs/advanced.md](advanced.md) — sub-agents, hooks, memory, plan mode, context compression
-- [docs/json-stream-protocol.md](json-stream-protocol.md) — JSON Lines protocol for host integration (e.g. the Wayland desktop app)
+- [docs/json-stream-protocol.md](json-stream-protocol.md) — JSON Lines protocol for host integration (e.g. the ApexRouter desktop app)
 - [docs/wcore-evolve.md](wcore-evolve.md) — GEPA evolution loop deep dive
 - [docs/troubleshooting.md](troubleshooting.md) — common errors and solutions

@@ -1,5 +1,5 @@
 //! T3-3.4 (sub-wave 4): environment variable passthrough registry
-//! ported from `wayland-hermes/agent/tools/env_passthrough.py`.
+//! ported from `apexrouter-hermes/agent/tools/env_passthrough.py`.
 //!
 //! Skills that declare `required_environment_variables` in their
 //! frontmatter need those vars available in sandboxed execution
@@ -23,7 +23,7 @@
 //! ## Differences from the Python original
 //!
 //! The Python port used a `ContextVar` so each gateway request had its
-//! own allowlist. Wayland runs as a single-tenant CLI / library, so we
+//! own allowlist. ApexRouter runs as a single-tenant CLI / library, so we
 //! use a process-global `RwLock<HashSet<String>>` instead. Tests use
 //! [`clear_env_passthrough`] to reset state between cases.
 //!
@@ -44,7 +44,7 @@ use parking_lot::RwLock;
 /// per-user config lookups, etc.).
 ///
 /// Deliberately excludes anything that can carry credentials —
-/// `*_API_KEY`, `*_TOKEN`, `*_SECRET`, `WAYLAND_VAULT_*`, etc. are never
+/// `*_API_KEY`, `*_TOKEN`, `*_SECRET`, `APEXROUTER_CLI_VAULT_*`, etc. are never
 /// in this list and are filtered out by [`is_sensitive_env_var`].
 const BASE_SANDBOX_ENV_ALLOWLIST: &[&str] = &[
     "PATH",
@@ -82,9 +82,9 @@ const BASE_SANDBOX_ENV_ALLOWLIST: &[&str] = &[
 /// secrets win over convenience.
 fn is_sensitive_env_var(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
-    // Wayland's own vault unlock secret — the single most dangerous var
+    // ApexRouter's own vault unlock secret — the single most dangerous var
     // to leak into a tool child.
-    if upper.starts_with("WAYLAND_VAULT") {
+    if upper.starts_with("APEXROUTER_CLI_VAULT") {
         return true;
     }
     const SECRET_MARKERS: &[&str] = &[
@@ -115,7 +115,7 @@ fn is_sensitive_env_var(name: &str) -> bool {
 ///    allowlist ([`is_env_passthrough`] — skill / config declared); and
 /// 2. it does NOT match [`is_sensitive_env_var`] — secret-bearing names
 ///    are dropped unconditionally, so a misconfigured passthrough entry
-///    cannot leak `*_API_KEY` / `WAYLAND_VAULT_PASSPHRASE` into a tool
+///    cannot leak `*_API_KEY` / `APEXROUTER_CLI_VAULT_PASSPHRASE` into a tool
 ///    child (and thence into the model context).
 ///
 /// This replaces the historical blanket `std::env::vars().collect()`
@@ -454,7 +454,7 @@ mod tests {
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
             "DB_PASSWORD",
-            "WAYLAND_VAULT_PASSPHRASE",
+            "APEXROUTER_CLI_VAULT_PASSPHRASE",
             "MY_PRIVATE_KEY",
             "SOME_CREDENTIAL",
             "service_apikey",

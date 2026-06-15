@@ -1,12 +1,12 @@
 //! T3-3.2.2 — Shared file-safety rules ported from
-//! `wayland-hermes/agent/tools/file_safety.py`.
+//! `apexrouter-hermes/agent/tools/file_safety.py`.
 //!
 //! This is a *helper* module, not a tool. It exposes:
 //!
 //!   * [`is_write_denied`] — would-be writes to known-sensitive paths
 //!     (SSH/AWS/GnuPG/k8s creds, `~/.bashrc`, `/etc/sudoers`, etc.) and
-//!     paths outside the optional `WAYLAND_WRITE_SAFE_ROOT` are refused.
-//!   * [`get_read_block_error`] — reads targeting the internal Wayland
+//!     paths outside the optional `APEXROUTER_CLI_WRITE_SAFE_ROOT` are refused.
+//!   * [`get_read_block_error`] — reads targeting the internal ApexRouter
 //!     skill-hub cache return a refusal string instead of leaking the
 //!     prompt-injection-prone contents.
 //!   * [`sensitive_patterns`] — flat view of the deny list (exact paths
@@ -31,10 +31,10 @@
 //!   matches `wcore_tools::path_validation::lex_normalize` and lets us
 //!   refuse a write-then-create on a sensitive path *before* the file
 //!   ever lands on disk.
-//! * `WAYLAND_WRITE_SAFE_ROOT` is resolved with `shellexpand`-style
+//! * `APEXROUTER_CLI_WRITE_SAFE_ROOT` is resolved with `shellexpand`-style
 //!   `~` expansion and then canonicalized once per call (cheap — env
 //!   vars are read fresh so tests can flip them).
-//! * `_wayland_home_path` is replaced by an injected `wayland_home`
+//! * `_apexrouter_home_path` is replaced by an injected `apexrouter_home`
 //!   argument on the lower-level builders, defaulting to
 //!   `wcore_config::config::app_config_dir()` in the top-level entry
 //!   points. Tests pass a synthetic path; production callers don't need
@@ -46,27 +46,27 @@ use wcore_config::config::app_config_dir;
 
 /// Env var that, when set, restricts all writes to paths underneath the
 /// expanded value. An unset or empty value disables the restriction.
-pub const WRITE_SAFE_ROOT_ENV: &str = "WAYLAND_WRITE_SAFE_ROOT";
+pub const WRITE_SAFE_ROOT_ENV: &str = "APEXROUTER_CLI_WRITE_SAFE_ROOT";
 
 /// Build the set of *exact* paths that must never be written. Paths are
 /// canonicalized (when they exist) so symlink aliasing can't bypass the
 /// check.
 ///
 /// `home` should be the canonicalized user home directory.
-/// `wayland_home` should be the canonicalized application config dir
-/// (typically `~/.config/wayland-core` on Linux, the platform analog
+/// `apexrouter_home` should be the canonicalized application config dir
+/// (typically `~/.config/apexrouter-cli` on Linux, the platform analog
 /// elsewhere).
-pub fn build_write_denied_paths(home: &Path, wayland_home: &Path) -> Vec<PathBuf> {
+pub fn build_write_denied_paths(home: &Path, apexrouter_home: &Path) -> Vec<PathBuf> {
     let mut raw: Vec<PathBuf> = vec![
         // Cross-platform: SSH keys, shell rcs, package-manager credentials
-        // and the wayland-core dotenv. These appear under the user's home
+        // and the apexrouter-cli dotenv. These appear under the user's home
         // directory regardless of OS — Git-for-Windows places `.ssh` under
         // `%USERPROFILE%\.ssh`, dotfiles under `%USERPROFILE%`, etc.
         home.join(".ssh").join("authorized_keys"),
         home.join(".ssh").join("id_rsa"),
         home.join(".ssh").join("id_ed25519"),
         home.join(".ssh").join("config"),
-        wayland_home.join(".env"),
+        apexrouter_home.join(".env"),
         home.join(".bashrc"),
         home.join(".zshrc"),
         home.join(".profile"),
@@ -148,7 +148,7 @@ pub fn build_write_denied_prefixes(home: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Read `WAYLAND_WRITE_SAFE_ROOT` from the environment, expand `~`, and
+/// Read `APEXROUTER_CLI_WRITE_SAFE_ROOT` from the environment, expand `~`, and
 /// canonicalize. Returns `None` when unset, empty, or unresolvable.
 pub fn get_safe_write_root() -> Option<PathBuf> {
     let raw = std::env::var(WRITE_SAFE_ROOT_ENV).ok()?;
@@ -289,11 +289,11 @@ fn lex_normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// Resolve the active Wayland config dir (`app_config_dir`) and fall
+/// Resolve the active ApexRouter config dir (`app_config_dir`) and fall
 /// back to a benign placeholder so deny-list construction never panics
 /// on a host without `dirs::config_dir`.
-fn resolved_wayland_home() -> PathBuf {
-    app_config_dir().unwrap_or_else(|| PathBuf::from("/nonexistent/wayland-core"))
+fn resolved_apexrouter_home() -> PathBuf {
+    app_config_dir().unwrap_or_else(|| PathBuf::from("/nonexistent/apexrouter-cli"))
 }
 
 /// Resolve the user home dir; fall back to a benign placeholder so
@@ -305,24 +305,24 @@ fn resolved_user_home() -> PathBuf {
 }
 
 /// Return `true` if `path` is blocked by the write deny list or the
-/// optional `WAYLAND_WRITE_SAFE_ROOT` clamp.
+/// optional `APEXROUTER_CLI_WRITE_SAFE_ROOT` clamp.
 ///
 /// Symlinks and `..` segments are resolved before comparison so
 /// attackers can't bypass via `/tmp/safe_link -> ~/.ssh`.
 pub fn is_write_denied(path: &Path) -> bool {
-    is_write_denied_with(path, &resolved_user_home(), &resolved_wayland_home())
+    is_write_denied_with(path, &resolved_user_home(), &resolved_apexrouter_home())
 }
 
-/// Lower-level entry point with injected `home` / `wayland_home` —
+/// Lower-level entry point with injected `home` / `apexrouter_home` —
 /// public for tests and for callers that already hold resolved paths.
-pub fn is_write_denied_with(path: &Path, home: &Path, wayland_home: &Path) -> bool {
+pub fn is_write_denied_with(path: &Path, home: &Path, apexrouter_home: &Path) -> bool {
     let resolved = canonicalize_for_check(path);
     if resolved.as_os_str().is_empty() {
         // Couldn't canonicalize at all — fail closed.
         return true;
     }
 
-    for denied in build_write_denied_paths(home, wayland_home) {
+    for denied in build_write_denied_paths(home, apexrouter_home) {
         if resolved == denied {
             return true;
         }
@@ -353,19 +353,19 @@ pub fn is_sensitive_path(path: &Path) -> bool {
     is_write_denied(path)
 }
 
-/// Return an error message when a read targets internal Wayland cache
+/// Return an error message when a read targets internal ApexRouter cache
 /// files (the skill hub's index cache, which is prompt-injection-prone
 /// if surfaced to the model directly). Returns `None` for safe reads.
 pub fn get_read_block_error(path: &Path) -> Option<String> {
-    get_read_block_error_with(path, &resolved_wayland_home())
+    get_read_block_error_with(path, &resolved_apexrouter_home())
 }
 
-/// Lower-level entry point with injected `wayland_home`.
-pub fn get_read_block_error_with(path: &Path, wayland_home: &Path) -> Option<String> {
+/// Lower-level entry point with injected `apexrouter_home`.
+pub fn get_read_block_error_with(path: &Path, apexrouter_home: &Path) -> Option<String> {
     let resolved = canonicalize_for_check(path);
     let resolved_str = resolved.as_os_str().to_string_lossy().to_string();
 
-    let hub = wayland_home.join("skills").join(".hub");
+    let hub = apexrouter_home.join("skills").join(".hub");
     let cache = hub.join("index-cache");
 
     // Most-specific path first so the message stays accurate even when
@@ -384,7 +384,7 @@ pub fn get_read_block_error_with(path: &Path, wayland_home: &Path) -> Option<Str
 
     if in_cache || in_hub {
         return Some(format!(
-            "Access denied: {} is an internal Wayland cache file \
+            "Access denied: {} is an internal ApexRouter cache file \
              and cannot be read directly to prevent prompt injection. \
              Use the skills_list or skill_view tools instead.",
             path.display()
@@ -398,8 +398,8 @@ pub fn get_read_block_error_with(path: &Path, wayland_home: &Path) -> Option<Str
 /// want to display the policy.
 pub fn sensitive_patterns() -> Vec<PathBuf> {
     let home = resolved_user_home();
-    let wayland_home = resolved_wayland_home();
-    let mut paths = build_write_denied_paths(&home, &wayland_home);
+    let apexrouter_home = resolved_apexrouter_home();
+    let mut paths = build_write_denied_paths(&home, &apexrouter_home);
     paths.sort();
     let prefixes = build_write_denied_prefixes(&home);
     paths.extend(prefixes);
@@ -416,8 +416,8 @@ mod tests {
     #[test]
     fn denied_paths_include_known_sensitives() {
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
-        let paths = build_write_denied_paths(&home, &wayland);
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
+        let paths = build_write_denied_paths(&home, &apexrouter);
         let strs: Vec<String> = paths
             .iter()
             .map(|p| p.to_string_lossy().to_string())
@@ -428,7 +428,7 @@ mod tests {
         assert!(strs.iter().any(|s| s.ends_with(".netrc")));
         assert!(strs.iter().any(|s| s.ends_with("/etc/shadow")));
         assert!(strs.iter().any(|s| s.ends_with("/etc/passwd")));
-        assert!(strs.iter().any(|s| s.ends_with("wayland-core/.env")));
+        assert!(strs.iter().any(|s| s.ends_with("apexrouter-cli/.env")));
     }
 
     #[cfg(windows)]
@@ -439,8 +439,8 @@ mod tests {
         // backslash-separated paths under the home dir, matching what
         // Git-for-Windows + Windows installers actually create.
         let home = PathBuf::from(r"C:\Users\alice");
-        let wayland = PathBuf::from(r"C:\Users\alice\AppData\Roaming\wayland-core");
-        let paths = build_write_denied_paths(&home, &wayland);
+        let apexrouter = PathBuf::from(r"C:\Users\alice\AppData\Roaming\apexrouter-cli");
+        let paths = build_write_denied_paths(&home, &apexrouter);
         let strs: Vec<String> = paths
             .iter()
             .map(|p| p.to_string_lossy().to_string())
@@ -450,7 +450,7 @@ mod tests {
         assert!(strs.iter().any(|s| s.ends_with(r".ssh\authorized_keys")));
         assert!(strs.iter().any(|s| s.ends_with(".bashrc")));
         assert!(strs.iter().any(|s| s.ends_with(".netrc")));
-        assert!(strs.iter().any(|s| s.ends_with(r"wayland-core\.env")));
+        assert!(strs.iter().any(|s| s.ends_with(r"apexrouter-cli\.env")));
         // Windows-specific paths come from the host's WINDIR/APPDATA at
         // runtime; spot-check only when both are present in CI.
         if std::env::var("WINDIR").is_ok() {
@@ -523,39 +523,39 @@ mod tests {
     #[test]
     fn write_denied_exact_path() {
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
         assert!(is_write_denied_with(
             Path::new("/home/alice/.bashrc"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
     }
 
     #[test]
     fn write_denied_directory_prefix() {
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
         assert!(is_write_denied_with(
             Path::new("/home/alice/.ssh/some_new_file"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
         assert!(is_write_denied_with(
             Path::new("/home/alice/.aws/credentials"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
     }
 
     #[test]
     fn write_allowed_ordinary_path() {
-        // Make sure WAYLAND_WRITE_SAFE_ROOT isn't lingering from another test.
+        // Make sure APEXROUTER_CLI_WRITE_SAFE_ROOT isn't lingering from another test.
         // SAFETY: tests run single-threaded for env mutation via #[serial] would
         // be ideal, but cargo test default is multi-thread per binary. We use
         // a unique tmpdir path here and don't touch the env var.
         let _ = std::env::var(WRITE_SAFE_ROOT_ENV); // observe only
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
         // /tmp/... is benign on linux + macOS-style hosts. We don't set the
         // safe-root env so the only gate is the deny list.
         let safe_was_set = std::env::var(WRITE_SAFE_ROOT_ENV).is_ok();
@@ -566,7 +566,7 @@ mod tests {
         assert!(!is_write_denied_with(
             Path::new("/tmp/wcore-fs-test/output.txt"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
     }
 
@@ -576,7 +576,7 @@ mod tests {
         // discipline). This catches the classic startswith-without-separator
         // bug.
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
         // Pre-clear safe root for this assertion.
         if std::env::var(WRITE_SAFE_ROOT_ENV).is_ok() {
             return;
@@ -584,18 +584,18 @@ mod tests {
         assert!(!is_write_denied_with(
             Path::new("/home/alice/.sshrc"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
     }
 
     #[test]
-    fn write_denied_wayland_env_file() {
+    fn write_denied_apexrouter_env_file() {
         let home = PathBuf::from("/home/alice");
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
         assert!(is_write_denied_with(
-            Path::new("/home/alice/.config/wayland-core/.env"),
+            Path::new("/home/alice/.config/apexrouter-cli/.env"),
             &home,
-            &wayland,
+            &apexrouter,
         ));
     }
 
@@ -603,33 +603,33 @@ mod tests {
 
     #[test]
     fn read_block_hits_skill_hub() {
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
-        let target = wayland.join("skills").join(".hub").join("index.json");
-        let msg = get_read_block_error_with(&target, &wayland).expect("should block hub index");
-        assert!(msg.contains("internal Wayland cache file"));
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
+        let target = apexrouter.join("skills").join(".hub").join("index.json");
+        let msg = get_read_block_error_with(&target, &apexrouter).expect("should block hub index");
+        assert!(msg.contains("internal ApexRouter cache file"));
         assert!(msg.contains("skills_list"));
     }
 
     #[test]
     fn read_block_hits_index_cache() {
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
-        let target = wayland
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
+        let target = apexrouter
             .join("skills")
             .join(".hub")
             .join("index-cache")
             .join("entry.bin");
-        assert!(get_read_block_error_with(&target, &wayland).is_some());
+        assert!(get_read_block_error_with(&target, &apexrouter).is_some());
     }
 
     #[test]
     fn read_block_passes_unrelated_path() {
-        let wayland = PathBuf::from("/home/alice/.config/wayland-core");
-        assert!(get_read_block_error_with(Path::new("/tmp/work.txt"), &wayland).is_none());
+        let apexrouter = PathBuf::from("/home/alice/.config/apexrouter-cli");
+        assert!(get_read_block_error_with(Path::new("/tmp/work.txt"), &apexrouter).is_none());
         // Skills *root* (not under .hub) is allowed.
         assert!(
             get_read_block_error_with(
-                &wayland.join("skills").join("my-skill").join("SKILL.md"),
-                &wayland,
+                &apexrouter.join("skills").join("my-skill").join("SKILL.md"),
+                &apexrouter,
             )
             .is_none()
         );
