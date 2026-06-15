@@ -1,7 +1,5 @@
 <div align="center">
 
-![ApexRouter CLI — Forged to run. Hardened to last. Built to evolve.](docs/img/hero.png)
-
 ### The open-source Rust engine for autonomous LLM agents.
 
 **Terminal-first. Multi-provider. MCP-native. Embeddable. Apache-2.0.**
@@ -29,13 +27,7 @@ ApexRouter CLI is a domain-agnostic autonomous-agent engine written in Rust. It 
 npx @APEX-AI-LABS-LLP/apexrouter-cli "read Cargo.toml, list the workspace crates, and explain the dependency layering"
 ```
 
-One command. The agent reads the file, runs `grep`/`glob` across the tree, reasons, and answers, with every tool call gated and streamed. Or run `apexrouter-cli` with no arguments and it detects your provider keys and drops you into the TUI:
-
-<div align="center">
-
-![ApexRouter CLI — connect a provider](docs/img/screenshot-onboarding.png)
-
-</div>
+One command. The agent reads the file, runs `grep`/`glob` across the tree, reasons, and answers, with every tool call gated and streamed. Or run `apexrouter-cli` with no arguments and it detects your provider keys and drops you into the TUI.
 
 ## What it is
 
@@ -106,12 +98,6 @@ strip_patterns           = ["<think>", "</think>"]
 
 Resilience is on by default. Every provider call is wrapped in a circuit breaker, with automatic retry, mid-stream reconnect (a TLS drop after headers is retried, not treated as fatal), multi-key rotation with cooldown demotion, and cross-provider failover when you configure a fallback chain.
 
-<div align="center">
-
-![Providers and model routing — ApexRouter CLI vs OpenClaw, Hermes, opencode, aider](docs/img/compare-providers.png)
-
-</div>
-
 ## Orchestration & swarms
 
 A single agent is the floor, not the ceiling. ApexRouter CLI fans work out across many agents and brings the results back, with real isolation between workers.
@@ -120,18 +106,6 @@ A single agent is the floor, not the ceiling. ApexRouter CLI fans work out acros
 - **Worktree swarm** runs N workers as subprocesses, each in its own fresh git worktree on its own branch, with a dirty-checkout guard that refuses to dispatch on an uncommitted tree, per-worker timeouts, and idempotent cleanup. Process isolation, not threads, so one bad worker cannot corrupt another.
 - **ForgeFlows** are declarative RON workflows that lower onto the engine's own execution graph, so stages are real sub-agents rather than a separate interpreter. Stages are schema-validated and self-retrying: a stage whose output fails its schema is re-dispatched with the error, and completed stages are never discarded on a later failure.
 - **Selectable reducers.** Roll worker results up with `apexrouter swarm --reduce mesh|fleet|consensus|debate` — majority consensus, multi-round debate, or a plain fan-in.
-
-<div align="center">
-
-![Fleet spawn fan-out — one orchestrator, isolated workers, merged result](docs/img/diagram-swarm.png)
-
-</div>
-
-<div align="center">
-
-![Orchestration, compared](docs/img/compare-orchestration.png)
-
-</div>
 
 ## Security by default
 
@@ -143,27 +117,9 @@ Security is a default, not a setting, and it is built to hold up when someone re
 - **Injection-safe shell.** Tool arguments are passed in argv mode, so shell metacharacters reach the child as literal bytes, never interpreted.
 - **Crash-safe.** Your prompt is journaled to a write-ahead log before the model sees it, so a `SIGKILL` mid-turn does not lose it. File edits are checkpointed for rollback. Every tool call is approval-gated, with scoped allow/deny.
 
-<div align="center">
-
-![Security: fail-closed — sandbox plus one CI-enforced egress gate](docs/img/diagram-security.png)
-
-</div>
-
-<div align="center">
-
-![Security and sandboxing, compared](docs/img/compare-security.png)
-
-</div>
-
 ## Built to endure
 
 Most agent demos prove an agent can finish a task. The harder question is whether one can run unattended for a long time, on its own codebase, surviving crashes and injected faults without ever drifting or corrupting its state. We are putting ApexRouter CLI through exactly that, as an open endurance trial.
-
-<div align="center">
-
-![Resilience under fire — WAL, retry, and checkpoint recovering through deliberate kills](docs/img/diagram-resilience.png)
-
-</div>
 
 **Measured so far** (one continuous 12-hour unattended run):
 
@@ -193,18 +149,6 @@ ApexRouter CLI ships a scored evolutionary optimizer: it generates variant promp
 
 [→ docs/tools.md](docs/tools.md) · [→ docs/skills.md](docs/skills.md) · [→ docs/mcp.md](docs/mcp.md)
 
-<div align="center">
-
-![Built-in tools, compared — ApexRouter CLI vs OpenClaw, Hermes, opencode, aider](docs/img/compare-tools.png)
-
-</div>
-
-<div align="center">
-
-![Extensibility, compared](docs/img/compare-extensibility.png)
-
-</div>
-
 ## Embedding it
 
 Run it headless and drive it over JSON Lines:
@@ -219,12 +163,6 @@ The host sends `Message` / `SetConfig` / `SetMode` / `Stop` commands and receive
 
 A workspace of focused crates. Dependencies flow strictly downward; the engine only ever sees provider-neutral types, and format conversion lives inside each provider.
 
-<div align="center">
-
-![One engine, many surfaces — CLI, TUI, JSON stream, and an embedded host all driving the same core](docs/img/diagram-architecture.png)
-
-</div>
-
 | Layer | Crates | Responsibility |
 |-------|--------|----------------|
 | Foundation | `wcore-types`, `wcore-compact` | Provider-neutral data types; context compression |
@@ -234,22 +172,6 @@ A workspace of focused crates. Dependencies flow strictly downward; the engine o
 | Surface | `wcore-cli` | CLI / TUI / JSON-stream binary |
 
 [→ AGENTS.md](AGENTS.md)
-
-## How it compares
-
-We ran a file-level audit of the open-source agent CLIs and a docs-level orientation against the closed ones. Where we lose, we say so (git auto-commit loops, for instance, belong to opencode and aider).
-
-<!-- HEADLINE COMPARISON GRAPHIC: docs/img/compare-capabilities.png
-![How ApexRouter CLI compares](docs/img/compare-capabilities.png)
--->
-
-<div align="center">
-
-![Landscape comparison — ApexRouter CLI vs opencode, aider, Claude Code, Codex CLI](docs/img/compare-capabilities.png)
-
-</div>
-
-Closed-source tools (Claude Code, Codex CLI) are a docs-based orientation, not a code audit. Where we lose, we say so: git auto-commit/undo belongs to opencode and aider.
 
 ## Documentation
 
@@ -270,7 +192,7 @@ Issues and PRs welcome. Before a PR: `cargo fmt --all`, `cargo clippy --workspac
 
 ## License
 
-[Apache-2.0](LICENSE). ApexRouter CLI is a derivative work; see [NOTICE](NOTICE) for upstream attribution.
+[Apache-2.0](LICENSE).
 
 <div align="center">
 <sub>Part of the Forge Suite · <a href="https://apexrouter.io">apexrouter.io</a></sub>
